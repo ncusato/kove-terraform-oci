@@ -6,12 +6,9 @@ version: "20190304"
 locale: "en"
 
 variableGroups:
-  - title: "Authentication"
+  - title: "Stack context"
     variables:
       - tenancy_ocid
-      - user_ocid
-      - fingerprint
-      - private_key_path
       - region
 
   - title: "Target Configuration"
@@ -32,24 +29,6 @@ variables:
     type: oci:identity:tenancy:id
     title: "Tenancy OCID"
     description: "OCI tenancy where this stack runs."
-    required: true
-
-  user_ocid:
-    type: oci:identity:user:id
-    title: "User OCID"
-    description: "OCI user OCID for API key authentication."
-    required: true
-
-  fingerprint:
-    type: string
-    title: "API Key Fingerprint"
-    description: "Fingerprint for the API key used by the OCI provider."
-    required: true
-
-  private_key_path:
-    type: string
-    title: "Private Key Path"
-    description: "Path to OCI API private key accessible by Resource Manager job."
     required: true
 
   region:

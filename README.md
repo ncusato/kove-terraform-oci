@@ -72,14 +72,7 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
    - Ability to create VCNs and subnets (if creating new VCN)
    - Access to BM.Optimized3.36 shape (may require service limits increase)
 
-2. **OCI Authentication** (choose one):
-   - **Option A - API Keys** (for Terraform CLI or Resource Manager with API keys):
-     - User OCID
-     - API key fingerprint
-     - Private key file path
-   - **Option B - Instance Principal** (for Resource Manager, recommended):
-     - Dynamic group for the stack
-     - Policies allowing the dynamic group to manage resources
+2. **Authentication:** This stack is for OCI Resource Manager only. It uses the **resource principal** (no API keys). The user running the stack must have permission to create the resources in the chosen compartment.
 
 3. **Custom Image**:
    - RHEL 8.8 image OCID compatible with `BM.Optimized3.36` and `VM.Standard.E6.Flex`
@@ -95,9 +88,6 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 | Variable | Type | Description |
 |----------|------|-------------|
 | `tenancy_ocid` | String | OCI Tenancy OCID |
-| `user_ocid` | String | OCI User OCID (for API authentication) |
-| `fingerprint` | String | API key fingerprint |
-| `private_key_path` | String | Path to the OCI API private key file |
 | `region` | String | OCI region (e.g., us-ashburn-1, eu-frankfurt-1) |
 | `compartment_ocid` | String | Compartment where resources will be created |
 | `ssh_public_key` | String | SSH public key to inject into instances |
@@ -154,24 +144,15 @@ zip -r oci-hpc-bm-cluster-stack.zip main.tf variables.tf outputs.tf schema.yaml 
 #### 3. Configure Stack Variables
 
 **Required Variables**:
-- `tenancy_ocid`: Your tenancy OCID
-- `user_ocid`: OCI User OCID (for API authentication)
-- `fingerprint`: API key fingerprint
-- `private_key_path`: Path to OCI API private key (relative to stack working directory, or use absolute path)
-- `region`: OCI region (e.g., us-ashburn-1)
+- `tenancy_ocid`: Your tenancy OCID (often pre-filled)
+- `region`: OCI region (e.g., us-ashburn-1, often pre-filled)
 - `compartment_ocid`: Compartment where resources will be created
 - `ssh_public_key`: SSH public key for instance access
-- `bm_node_image_ocid`: **RHEL 8.8** image OCID for BM nodes (automatically reused for head node)
+- `bm_node_image_ocid`: **RHEL 8.8** image OCID for BM nodes (also used for head node)
 
 **Optional Network Variables**:
 - `use_existing_vcn`: Set to `true` to use existing VCN (default: `false`)
-- `existing_vcn_id`: Existing VCN OCID (if using existing VCN)
-- `existing_public_subnet_id`: Existing public subnet OCID (if using existing VCN)
-- `existing_private_subnet_id`: Existing private subnet OCID (if using existing VCN)
-
-**Important Notes for OCI Resource Manager**:
-- **Private Key Path**: If using API key authentication, the `private_key_path` should be a path relative to the stack's working directory, or you can upload the private key as a file variable in Resource Manager and reference it.
-- **Instance Principal (Recommended)**: For better security, consider using instance principal authentication instead of API keys. See the "Customization" section for instructions.
+- `existing_vcn_id`, `existing_public_subnet_id`, `existing_private_subnet_id`: When using existing VCN
 
 #### 4. Review and Apply
 
@@ -192,53 +173,7 @@ Monitor the job in **Resource Manager** → **Jobs**:
 
 ### Option 2: Deploy with Terraform CLI
 
-#### 1. Prepare Your Environment
-
-1. **Install Terraform** (>= 1.3.0)
-2. **Configure OCI Provider**:
-   - Set up OCI API credentials
-   - Create API key and obtain fingerprint
-   - Note the path to your private key file
-
-3. **Prepare Images**:
-   - Ensure you have one RHEL 8.8 image OCID (used by both head and BM nodes)
-   - Images must be in the target compartment
-
-#### 2. Configure Variables
-
-Create a `terraform.tfvars` file:
-
-```hcl
-tenancy_ocid     = "ocid1.tenancy.oc1..xxxxx"
-user_ocid        = "ocid1.user.oc1..xxxxx"
-fingerprint      = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
-private_key_path = "/path/to/oci_api_key.pem"
-region           = "us-ashburn-1"
-compartment_ocid = "ocid1.compartment.oc1..xxxxx"
-ssh_public_key   = "ssh-rsa AAAAB3NzaC1yc2E..."
-
-# RHEL 8.8 image OCID (used for both head and BM nodes)
-bm_node_image_ocid   = "ocid1.image.oc1.iad.xxxxx"
-
-# Networking (optional - defaults to creating new VCN)
-use_existing_vcn            = false
-existing_vcn_id             = ""
-existing_public_subnet_id   = ""
-existing_private_subnet_id  = ""
-```
-
-#### 3. Deploy with Terraform
-
-```bash
-# Initialize Terraform
-terraform init
-
-# Review the plan
-terraform plan
-
-# Apply the configuration
-terraform apply
-```
+This stack is intended for **OCI Resource Manager** only. Deploy via the Console or the Deploy to Oracle Cloud button. The stack uses the resource principal; no API keys are required.
 
 ## Post-Deployment
 
@@ -385,35 +320,6 @@ Modify the `shape` parameter in `main.tf` for the `oci_core_instance.bm_nodes` r
 - `BM.Optimized3.36` (current)
 - Other BM shapes as available in your region
 
-### Using Instance Principal Authentication (OCI Resource Manager)
-
-To use instance principal authentication instead of API keys:
-
-1. **Create a Dynamic Group**:
-   ```
-   Name: oci-hpc-stack-dynamic-group
-   Matching Rule: resource.type = 'stack'
-   ```
-
-2. **Create Policies** (allow dynamic group to manage resources):
-   ```
-   Allow dynamic-group oci-hpc-stack-dynamic-group to manage all-resources in compartment <compartment-name>
-   ```
-
-3. **Update Provider Block** in `main.tf`:
-   ```hcl
-   provider "oci" {
-     tenancy_ocid = var.tenancy_ocid
-     region       = var.region
-     # Remove user_ocid, fingerprint, and private_key_path
-   }
-   ```
-
-4. **Remove API Key Variables** from `variables.tf`:
-   - Remove `user_ocid`
-   - Remove `fingerprint`
-   - Remove `private_key_path`
-
 ## Limitations
 
 - **Fixed Node Count**: Currently hardcoded to 4 BM nodes. Edit `main.tf` to change.
@@ -425,7 +331,7 @@ To use instance principal authentication instead of API keys:
 For issues or questions:
 1. Check the troubleshooting section above
 2. Review OCI Resource Manager job logs (if using Resource Manager)
-3. Check Terraform logs (if using Terraform CLI)
+3. Check the stack job logs in Resource Manager
 4. Review Terraform state for resource status
 5. Check instance console logs in OCI Console
 

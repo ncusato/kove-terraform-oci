@@ -3,21 +3,6 @@ variable "tenancy_ocid" {
   description = "OCI Tenancy OCID"
 }
 
-variable "user_ocid" {
-  type        = string
-  description = "OCI User OCID"
-}
-
-variable "fingerprint" {
-  type        = string
-  description = "API key fingerprint"
-}
-
-variable "private_key_path" {
-  type        = string
-  description = "Path to the OCI API private key"
-}
-
 variable "region" {
   type        = string
   description = "OCI region (e.g. us-ashburn-1)"
