@@ -299,9 +299,7 @@ resource "oci_core_cluster_network" "bm_cluster" {
     primary_vnic_subnets {
       subnet_id = local.private_subnet_id
     }
-    secondary_vnic_subnets {
-      subnet_id = local.cluster_subnet_id
-    }
+    # OCI API expects 0 secondary_vnic_subnets; RDMA/secondary VNIC is managed by the platform for cluster networks.
   }
 }
 
