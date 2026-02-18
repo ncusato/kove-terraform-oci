@@ -169,17 +169,9 @@ resource "oci_core_subnet" "private" {
 
 # Locals to abstract between new vs existing networking
 locals {
-  vcn_id = var.use_existing_vcn
-    ? var.existing_vcn_id
-    : oci_core_virtual_network.this[0].id
-
-  public_subnet_id = var.use_existing_vcn
-    ? var.existing_public_subnet_id
-    : oci_core_subnet.public[0].id
-
-  private_subnet_id = var.use_existing_vcn
-    ? var.existing_private_subnet_id
-    : oci_core_subnet.private[0].id
+  vcn_id             = var.use_existing_vcn ? var.existing_vcn_id : oci_core_virtual_network.this[0].id
+  public_subnet_id   = var.use_existing_vcn ? var.existing_public_subnet_id : oci_core_subnet.public[0].id
+  private_subnet_id  = var.use_existing_vcn ? var.existing_private_subnet_id : oci_core_subnet.private[0].id
 }
 
 # -------------------------------------------------------------------
