@@ -1,0 +1,20 @@
+# Copy to hosts.yml and fill in IPs from your Terraform/stack outputs.
+# Head node (public IP from stack output head_node_public_ip)
+[head]
+head-node ansible_host=HEAD_NODE_PUBLIC_IP ansible_user=opc
+
+# BM cluster network nodes (private IPs from stack output bm_node_private_ips)
+[bm]
+bm-node-1 ansible_host=BM_PRIVATE_IP_1 ansible_user=opc
+bm-node-2 ansible_host=BM_PRIVATE_IP_2 ansible_user=opc
+bm-node-3 ansible_host=BM_PRIVATE_IP_3 ansible_user=opc
+bm-node-4 ansible_host=BM_PRIVATE_IP_4 ansible_user=opc
+
+# All nodes (head + bm) for RHEL prep
+[all:children]
+head
+bm
+
+[all:vars]
+ansible_connection=ssh
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'

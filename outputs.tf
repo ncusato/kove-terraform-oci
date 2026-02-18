@@ -9,11 +9,18 @@ output "head_node_public_ip" {
 }
 
 output "bm_node_private_ips" {
-  description = "Private IPs of BM cluster nodes"
-  value       = [
-    for i in oci_core_instance.bm_nodes :
-    i.private_ip
-  ]
+  description = "Private IPs of BM cluster network nodes (primary VNIC)"
+  value       = [for inst in data.oci_core_instance.bm_instance : inst.private_ip]
+}
+
+output "cluster_network_id" {
+  description = "Cluster network OCID (RDMA)"
+  value       = oci_core_cluster_network.bm_cluster.id
+}
+
+output "instance_pool_id" {
+  description = "Instance pool OCID for the BM cluster"
+  value       = one(oci_core_cluster_network.bm_cluster.instance_pools).id
 }
 
 # Helper: list existing VCNs in the compartment (for choosing one)

@@ -19,6 +19,13 @@ variableGroups:
       - existing_public_subnet_id
       - existing_private_subnet_id
 
+  - title: "Ansible from head"
+    variables:
+      - run_ansible_from_head
+      - rhsm_username
+      - rhsm_password
+      - rdma_ping_target
+
   - title: "Stack context (pre-filled from your session)"
     variables:
       - tenancy_ocid
@@ -91,6 +98,31 @@ variables:
     dependsOn:
       compartmentId: ${compartment_ocid}
       vcnId: ${existing_vcn_id}
+
+  run_ansible_from_head:
+    type: boolean
+    title: "Run Ansible from head at first boot"
+    description: "If true, head node runs RHEL + RDMA Ansible playbook at first boot. Requires head node in a dynamic group with instance principal (see README)."
+    default: false
+    required: true
+
+  rhsm_username:
+    type: string
+    title: "RHSM username"
+    description: "Red Hat Subscription Manager username (when Run Ansible from head is true)."
+    required: false
+
+  rhsm_password:
+    type: string
+    title: "RHSM password"
+    description: "Red Hat Subscription Manager password (when Run Ansible from head is true)."
+    required: false
+
+  rdma_ping_target:
+    type: string
+    title: "RDMA ping target IP"
+    description: "Optional IP for RDMA ping check (e.g. another BM node's RDMA interface)."
+    required: false
 
 outputs:
   created_vcn_id:

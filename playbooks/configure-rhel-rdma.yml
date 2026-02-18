@@ -1,0 +1,39 @@
+---
+# Configure RHEL and RDMA on head node and BM cluster network nodes.
+# Run after Terraform apply. Use inventory built from stack outputs.
+#
+# Example:
+#   ansible-playbook -i inventory/hosts.yml configure-rhel-rdma.yml \
+#     -e "rhsm_username=your_rhsm_user" -e "rhsm_password=your_rhsm_pass" \
+#     --ask-become-pass
+#
+# Or use a vault for secrets:
+#   ansible-playbook -i inventory/hosts.yml configure-rhel-rdma.yml --ask-vault-pass
+
+- name: RHEL and RDMA configuration
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    bm_prefix: "bm-node-"
+  tasks:
+    - name: Ensure RHEL nodes are registered and prepared (head + BM)
+      include_role:
+        name: rhel_prep
+      when: ansible_os_family == "RedHat"
+
+- name: RDMA authentication and re-auth timer (BM cluster network only)
+  hosts: bm
+  become: true
+  vars:
+    # RDMA interface on BM.Optimized3.36 in cluster network is typically eth2 (secondary VNIC)
+    rdma_interface: "{{ rdma_interface | default('eth2') }}"
+    # Set to another BM node's RDMA (secondary VNIC) IP for ping test
+    rdma_ping_target: "{{ rdma_ping_target | default('') }}"
+    # OCI CN Auth package (RHEL 8; adjust for your region if needed)
+    oci_cn_auth_rpm_url: "{{ oci_cn_auth_rpm_url | default('https://objectstorage.us-ashburn-1.oraclecloud.com/n/oci-hpc-app-catalog/b/compute-hpc-rdma-auth-oel/c/oci-hpc-app-catalog/rpm/el8/x86_64/oci-cn-auth-1.0.0-1.el8.x86_64.rpm') }}"
+  tasks:
+    - name: Configure RDMA auth and nm-cloud-setup
+      include_role:
+        name: rdma_auth
+      when: ansible_os_family == "RedHat"

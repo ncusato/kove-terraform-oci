@@ -8,14 +8,14 @@ A Terraform configuration for provisioning a High-Performance Computing (HPC) cl
 
 This stack provisions and configures an HPC cluster on OCI consisting of:
 - **1 Head Node** (VM.Standard.E6.Flex) for cluster management
-- **4 BM.Optimized3.36 nodes** in a private subnet
-- **Flexible networking** - create new VCN or use existing
-- **Ansible playbooks** for cluster configuration (full HPC stack with Slurm support)
+- **4 BM.Optimized3.36 nodes** in a **cluster network** (RDMA)
+- **Flexible networking** – create new VCN or use existing
+- **Ansible playbook** for RHEL and RDMA configuration after provisioning
 
 ## Features
 
 - **Head Node**: VM.Standard.E6.Flex instance for cluster management and access
-- **Bare Metal Nodes**: 4 BM.Optimized3.36 nodes for compute workloads
+- **Bare Metal Nodes**: 4 BM.Optimized3.36 nodes in a **cluster network** with RDMA
 - **Flexible Networking**: Option to create new VCN or use existing infrastructure
 - **Ansible Automation**: Full HPC stack playbooks included (Slurm, LDAP, NFS, etc.)
 
@@ -26,8 +26,8 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 │              Terraform                   │
 │  • VCN & Subnets (optional)             │
 │  • Head Node (VM.Standard.E6.Flex)     │
-│  • 4x BM.Optimized3.36 nodes           │
-│  • Public & Private Subnets             │
+│  • Cluster network (4x BM.Optimized3.36, RDMA) │
+│  • Public & private subnets             │
 └─────────────────────────────────────────┘
                     │
                     ▼
@@ -107,6 +107,17 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 - Public subnet CIDR: 10.0.1.0/24
 - Private subnet CIDR: 10.0.2.0/24
 
+### Ansible from head (Resource Manager)
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `run_ansible_from_head` | Boolean | false | If true, head node runs the RHEL + RDMA Ansible playbook at first boot via cloud-init |
+| `rhsm_username` | String | "" | RHSM username (required when `run_ansible_from_head = true`) |
+| `rhsm_password` | String | "" | RHSM password (required when `run_ansible_from_head = true`) |
+| `rdma_ping_target` | String | "" | Optional IP for RDMA ping check (e.g. another BM node's RDMA interface) |
+
+When `run_ansible_from_head = true`, the head node must be in an OCI **dynamic group** with a policy that allows **instance principal** to list instance pool instances and instance VNICs in the compartment. See **Run Ansible from head node** below for setup.
+
 ## Deployment Steps
 
 ### Option 1: Deploy via OCI Resource Manager (Recommended)
@@ -119,10 +130,10 @@ Create a zip file containing all Terraform files:
 
 ```bash
 # On Windows (PowerShell)
-Compress-Archive -Path main.tf,variables.tf,outputs.tf,schema.yaml,inventory.tpl,playbooks -DestinationPath oci-hpc-bm-cluster-stack.zip
+Compress-Archive -Path main.tf,variables.tf,outputs.tf,schema.yaml,scripts,inventory.tpl,playbooks -DestinationPath oci-hpc-bm-cluster-stack.zip
 
 # On Linux/Mac
-zip -r oci-hpc-bm-cluster-stack.zip main.tf variables.tf outputs.tf schema.yaml inventory.tpl playbooks/
+zip -r oci-hpc-bm-cluster-stack.zip main.tf variables.tf outputs.tf schema.yaml inventory.tpl playbooks/ scripts/
 ```
 
 **Important**: Ensure the zip file contains:
@@ -130,8 +141,9 @@ zip -r oci-hpc-bm-cluster-stack.zip main.tf variables.tf outputs.tf schema.yaml 
 - `variables.tf`
 - `outputs.tf`
 - `schema.yaml`
+- `scripts/` directory (required when using Run Ansible from head; contains `head_bootstrap.sh.tpl`)
 - `inventory.tpl` (optional, for Ansible)
-- `playbooks/` directory (optional, for Ansible)
+- `playbooks/` directory (required when using Run Ansible from head; contains playbook and roles)
 
 #### 2. Create Stack in OCI Resource Manager
 
@@ -167,7 +179,7 @@ Monitor the job in **Resource Manager** → **Jobs**:
 - **Terraform Phase** (~15-30 minutes):
   - Create VCN and networking (if `use_existing_vcn = false`)
   - Provision head node (VM.Standard.E6.Flex)
-  - Provision 4 BM.Optimized3.36 nodes
+  - Provision cluster network with 4 BM.Optimized3.36 nodes (RDMA)
   - Configure networking and security
 
 ### Option 2: Deploy with Terraform CLI
@@ -198,17 +210,67 @@ After deployment, you can access the cluster:
 After deployment, Terraform provides:
 - `created_vcn_id`: VCN OCID (created or existing)
 - `head_node_public_ip`: Public IP of the head node
-- `bm_node_private_ips`: List of private IPs for BM nodes
+- `bm_node_private_ips`: List of private IPs for BM cluster network nodes
+- `cluster_network_id`: Cluster network OCID (RDMA)
+- `instance_pool_id`: Instance pool OCID for the BM cluster
 - `existing_vcns_in_compartment`: Helper output listing existing VCNs
 
-### Running Ansible Playbooks
+### Run Ansible from head node (Resource Manager)
 
-The included Ansible playbooks (`playbooks/site.yml`) support full HPC stack configuration. You'll need to:
-1. Generate an Ansible inventory from your deployed nodes
-2. Configure variables in the playbooks
-3. Run the playbooks from the head node or a management machine
+If you set **Run Ansible from head at first boot** to **true** in the stack, the head node runs the RHEL + RDMA playbook automatically at first boot. It uses **instance principal** to discover BM node private IPs from the instance pool (no API keys on the instance).
 
-**Note**: The current `inventory.tpl` and `site.yml` are configured for a full HPC stack with Slurm, LDAP, and NFS. You may need to customize these for your specific needs.
+**Requirement:** Put the head node in a **dynamic group** and grant that group permission to list instance pool instances and instance VNICs in the compartment.
+
+1. **Create a dynamic group** (e.g. name: `hpc-head-instances`):
+   - **Matching rule**: `ALL { instance.id = '<head_node_instance_ocid>' }`  
+     Or match by compartment: `ALL { resource.compartment.id = '<compartment_ocid>' }` and narrow with a tag if needed.
+   - To match the head node by compartment and name, you can use:  
+     `ALL { resource.type = 'computeinstance', resource.compartment.id = '<compartment_ocid>' }`  
+     (Then restrict the policy to only the head node by resource name if your policy language supports it, or use a tag on the head node and match `ALL { instance.compartment.id = '...', tag.YourTag.Key = 'head' }`.)
+
+2. **Create a policy** in the compartment (or tenancy) allowing the dynamic group to read instance pool and instance details:
+   ```hcl
+   Allow dynamic-group hpc-head-instances to read instance-family in compartment <compartment_name>
+   Allow dynamic-group hpc-head-instances to use virtual-network-family in compartment <compartment_name>
+   ```
+   Or minimal for the bootstrap script:
+   ```
+   Allow dynamic-group hpc-head-instances to { instance-family } in compartment <compartment_name>
+   Allow dynamic-group hpc-head-instances to { VNIC_READ } in compartment <compartment_name>
+   ```
+   (Use `read instance-family` and `read virtual-network-family` if your tenancy uses the newer verb style.)
+
+3. **Apply the stack** with `run_ansible_from_head = true`, `rhsm_username`, and `rhsm_password` set. After the head node boots, check `/var/log/oci-hpc-ansible-bootstrap.log` on the head node for playbook progress.
+
+**Note:** The head node is created after the cluster network so the instance pool exists when the bootstrap script runs. The script waits up to 45 minutes for the instance pool to reach the expected BM count before building the inventory and running Ansible.
+
+### Running the RHEL + RDMA Ansible playbook (manual)
+
+Alternatively, after the stack has applied you can run the Ansible playbook yourself from a machine that can SSH to the head node.
+
+1. **Build an inventory** from stack outputs:
+   - Copy `playbooks/inventory/hosts.sample` to `playbooks/inventory/hosts.yml`.
+   - Set `HEAD_NODE_PUBLIC_IP` to the stack output `head_node_public_ip`.
+   - Set `BM_PRIVATE_IP_1` … `BM_PRIVATE_IP_4` to the IPs from `bm_node_private_ips` (in order).
+
+2. **Run the playbook** (from a machine that can SSH to the head node; the head node can then reach BM nodes via private IPs):
+   ```bash
+   cd playbooks
+   ansible-playbook -i inventory/hosts.yml configure-rhel-rdma.yml \
+     -e "rhsm_username=YOUR_RHSM_USER" -e "rhsm_password=YOUR_RHSM_PASS" \
+     -e "rdma_ping_target=10.0.3.2" \
+     --ask-become-pass
+   ```
+   - `rdma_ping_target`: Use another BM node’s **RDMA (secondary VNIC)** IP, e.g. from the `10.0.3.0/24` range if you created a new VCN.
+   - For RHEL registration you must pass `rhsm_username` and `rhsm_password`.
+
+3. **Optional**: Use Ansible Vault for secrets:
+   ```bash
+   ansible-vault create group_vars/all/vault.yml  # add rhsm_username, rhsm_password
+   ansible-playbook -i inventory/hosts.yml configure-rhel-rdma.yml --ask-vault-pass
+   ```
+
+The playbook runs **rhel_prep** on all nodes (head + BM) and **rdma_auth** on BM nodes only.
 
 ## File Structure
 
@@ -222,9 +284,14 @@ kove-oci-build-2/
 ├── variables.tf                # Terraform variable definitions
 ├── outputs.tf                  # Terraform outputs
 ├── schema.yaml                 # OCI Resource Manager stack UI schema
+├── scripts/
+│   └── head_bootstrap.sh.tpl   # Cloud-init script: run Ansible from head (when run_ansible_from_head = true)
 ├── inventory.tpl               # Ansible inventory template (full HPC stack)
 └── playbooks/
-    ├── site.yml                # Main Ansible playbook (full HPC stack)
+    ├── configure-rhel-rdma.yml # RHEL + RDMA config (run after stack apply)
+    ├── inventory/
+    │   └── hosts.sample        # Sample inventory; fill from stack outputs
+    ├── site.yml                # Full HPC stack playbook (optional)
     └── roles/
         ├── rhel_prep/          # RHEL registration and prep
         │   └── tasks/main.yml

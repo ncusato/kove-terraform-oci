@@ -23,6 +23,12 @@ variable "bm_node_image_ocid" {
   description = "RHEL 8.8 image OCID for BM.Optimized3.36 nodes (also used for head node)"
 }
 
+variable "bm_node_count" {
+  type        = number
+  description = "Number of BM nodes in the cluster network (RDMA)"
+  default     = 4
+}
+
 # -------------------------------------------------------------------
 # Networking control
 # -------------------------------------------------------------------
@@ -63,3 +69,33 @@ locals {
 # Terraform doesn't allow top-level validation on locals directly,
 # but you can add a "fake" resource if you want hard enforcement.
 # For now, we rely on you to set the IDs correctly when use_existing_vcn = true.
+
+# -------------------------------------------------------------------
+# Ansible from head node (Resource Manager)
+# -------------------------------------------------------------------
+
+variable "run_ansible_from_head" {
+  type        = bool
+  description = "If true, head node user_data runs Ansible at first boot (instance principal required; see README)."
+  default     = false
+}
+
+variable "rhsm_username" {
+  type        = string
+  description = "RHSM username for RHEL registration (used when run_ansible_from_head = true)."
+  default     = ""
+  sensitive   = true
+}
+
+variable "rhsm_password" {
+  type        = string
+  description = "RHSM password for RHEL registration (used when run_ansible_from_head = true)."
+  default     = ""
+  sensitive   = true
+}
+
+variable "rdma_ping_target" {
+  type        = string
+  description = "RDMA interface ping target IP (e.g. another BM node's secondary VNIC IP) for playbook when run_ansible_from_head = true."
+  default     = ""
+}

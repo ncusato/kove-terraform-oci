@@ -154,7 +154,7 @@ resource "oci_core_subnet" "public" {
   dns_label                  = "publicsub"
 }
 
-# Private subnet (for BM nodes)
+# Private subnet (for BM nodes / cluster network primary VNIC)
 resource "oci_core_subnet" "private" {
   count                      = var.use_existing_vcn ? 0 : 1
   compartment_id             = var.compartment_ocid
@@ -167,11 +167,44 @@ resource "oci_core_subnet" "private" {
   dns_label                  = "privatesub"
 }
 
+# Cluster network subnet (RDMA secondary VNIC; only when creating new VCN)
+resource "oci_core_subnet" "cluster" {
+  count                      = var.use_existing_vcn ? 0 : 1
+  compartment_id             = var.compartment_ocid
+  display_name               = "cluster-rdma-subnet"
+  vcn_id                     = oci_core_virtual_network.this[0].id
+  cidr_block                 = "10.0.3.0/24"
+  route_table_id             = oci_core_route_table.private[0].id
+  security_list_ids          = [oci_core_security_list.private[0].id]
+  prohibit_public_ip_on_vnic = true
+  dns_label                  = "clustersub"
+}
+
 # Locals to abstract between new vs existing networking
 locals {
   vcn_id             = var.use_existing_vcn ? var.existing_vcn_id : oci_core_virtual_network.this[0].id
   public_subnet_id   = var.use_existing_vcn ? var.existing_public_subnet_id : oci_core_subnet.public[0].id
   private_subnet_id  = var.use_existing_vcn ? var.existing_private_subnet_id : oci_core_subnet.private[0].id
+  cluster_subnet_id  = var.use_existing_vcn ? var.existing_private_subnet_id : oci_core_subnet.cluster[0].id
+}
+
+# Bootstrap script inputs (only used when run_ansible_from_head = true)
+locals {
+  instance_pool_id  = one(oci_core_cluster_network.bm_cluster.instance_pools).id
+  extra_vars_yaml   = <<-EOT
+rhsm_username: ${jsonencode(var.rhsm_username)}
+rhsm_password: ${jsonencode(var.rhsm_password)}
+rdma_ping_target: ${jsonencode(var.rdma_ping_target)}
+EOT
+  bootstrap_template_vars = {
+    instance_pool_id = local.instance_pool_id
+    compartment_id   = var.compartment_ocid
+    bm_count         = var.bm_node_count
+    playbook_b64     = base64encode(file("${path.module}/playbooks/configure-rhel-rdma.yml"))
+    rhel_prep_b64    = base64encode(file("${path.module}/playbooks/roles/rhel_prep/tasks/main.yml"))
+    rdma_auth_b64    = base64encode(file("${path.module}/playbooks/roles/rdma_auth/tasks/main.yml"))
+    extra_vars_b64   = base64encode(local.extra_vars_yaml)
+  }
 }
 
 # -------------------------------------------------------------------
@@ -202,35 +235,83 @@ resource "oci_core_instance" "head_node" {
     hostname_label   = "headnode"
   }
 
-  metadata = {
-    ssh_authorized_keys = var.ssh_public_key
-  }
+  metadata = merge(
+    { ssh_authorized_keys = var.ssh_public_key },
+    var.run_ansible_from_head ? { user_data = base64encode(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars)) } : {}
+  )
 }
 
 # -------------------------------------------------------------------
-# 4-node BM.Optimized3.36 cluster (private subnet)
+# Cluster network (RDMA) for 4x BM.Optimized3.36
 # -------------------------------------------------------------------
 
-resource "oci_core_instance" "bm_nodes" {
-  count               = 4
-  compartment_id      = var.compartment_ocid
-  availability_domain = local.ad_name
+# Instance configuration template for cluster network (no create_vnic_details; cluster network provides VNICs)
+resource "oci_core_instance_configuration" "bm_cluster" {
+  compartment_id = var.compartment_ocid
+  display_name   = "bm-cluster-config"
 
-  display_name = "bm-node-${count.index}"
-  shape        = "BM.Optimized3.36"
+  instance_details {
+    instance_type = "compute"
+    launch_details {
+      compartment_id      = var.compartment_ocid
+      availability_domain = local.ad_name
+      display_name        = "bm-node"
+      shape               = "BM.Optimized3.36"
 
-  source_details {
-    source_type = "image"
-    source_id   = var.bm_node_image_ocid
+      source_details {
+        source_type = "image"
+        image_id    = var.bm_node_image_ocid
+      }
+
+      metadata = {
+        ssh_authorized_keys = var.ssh_public_key
+      }
+
+      agent_config {
+        are_all_plugins_disabled = false
+        is_management_disabled   = true
+        is_monitoring_disabled   = false
+        plugins_config {
+          name          = "Compute HPC RDMA Authentication"
+          desired_state = "ENABLED"
+        }
+        plugins_config {
+          name          = "Compute HPC RDMA Auto-Configuration"
+          desired_state = "ENABLED"
+        }
+      }
+    }
+  }
+}
+
+resource "oci_core_cluster_network" "bm_cluster" {
+  compartment_id = var.compartment_ocid
+  display_name   = "bm-rdma-cluster"
+
+  instance_pools {
+    instance_configuration_id = oci_core_instance_configuration.bm_cluster.id
+    size                      = var.bm_node_count
+    display_name              = "bm-pool"
   }
 
-  create_vnic_details {
-    subnet_id        = local.private_subnet_id
-    assign_public_ip = false
-    hostname_label   = "bmnode${count.index}"
+  placement_configuration {
+    availability_domain = local.ad_name
+    primary_vnic_subnets {
+      subnet_id = local.private_subnet_id
+    }
+    secondary_vnic_subnets {
+      subnet_id = local.cluster_subnet_id
+    }
   }
+}
 
-  metadata = {
-    ssh_authorized_keys = var.ssh_public_key
-  }
+# Instance pool instances (for output IPs)
+data "oci_core_instance_pool_instances" "bm_pool_instances" {
+  instance_pool_id = one(oci_core_cluster_network.bm_cluster.instance_pools).id
+  compartment_id   = var.compartment_ocid
+}
+
+data "oci_core_instance" "bm_instance" {
+  for_each    = { for inst in data.oci_core_instance_pool_instances.bm_pool_instances.instances : inst.instance_id => inst }
+  instance_id = each.key
 }
