@@ -1,0 +1,8 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+# Packed playbooks (generated when run_ansible_from_head = true)
+playbooks.zip
+.terraform/playbooks.zip

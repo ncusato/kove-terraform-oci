@@ -15,17 +15,21 @@ do_bootstrap() {
   BM_COUNT=${bm_count}
   SSH_USER="${instance_ssh_user}"
   ANSIBLE_DIR="/opt/oci-hpc-ansible"
-  PLAYBOOK_B64="${playbook_b64}"
-  RHEL_PREP_B64="${rhel_prep_b64}"
-  RDMA_AUTH_B64="${rdma_auth_b64}"
-  CLUSTER_SETUP_B64="${cluster_setup_b64}"
+  PAYLOAD_B64="${payload_b64}"
   EXTRA_VARS_B64="${extra_vars_b64}"
 
   echo "$(date) Bootstrap: installing packages..."
-  dnf install -y ansible python3-oci-cli jq || yum install -y ansible python3-oci-cli jq || true
+  dnf install -y ansible python3-oci-cli jq unzip || yum install -y ansible python3-oci-cli jq unzip || true
   if ! command -v oci >/dev/null 2>&1; then
     pip3 install oci-cli 2>/dev/null || true
   fi
+
+  echo "$(date) Bootstrap: extracting playbooks (zip)..."
+  mkdir -p "$ANSIBLE_DIR"
+  echo "$PAYLOAD_B64" | base64 -d > /tmp/playbooks.zip
+  unzip -o -q /tmp/playbooks.zip -d "$ANSIBLE_DIR"
+  rm -f /tmp/playbooks.zip
+  echo "$EXTRA_VARS_B64" | base64 -d > "$ANSIBLE_DIR/extra_vars.yml"
 
   echo "$(date) Bootstrap: waiting for instance pool to have $BM_COUNT instances (timeout 45 min)..."
   for i in $(seq 1 90); do
@@ -39,7 +43,7 @@ do_bootstrap() {
   done
 
   echo "$(date) Bootstrap: getting private IPs..."
-  mkdir -p "$ANSIBLE_DIR"/inventory "$ANSIBLE_DIR"/roles/rhel_prep/tasks "$ANSIBLE_DIR"/roles/rdma_auth/tasks "$ANSIBLE_DIR"/roles/cluster_setup/tasks
+  mkdir -p "$ANSIBLE_DIR/inventory"
   HEAD_IP=$(hostname -I | awk '{print $1}')
   echo "[head]
 head-node ansible_host=$HEAD_IP ansible_user=$SSH_USER
@@ -58,13 +62,6 @@ head-node ansible_host=$HEAD_IP ansible_user=$SSH_USER
   echo "[all:children]
 head
 bm" >> "$ANSIBLE_DIR/inventory/hosts"
-
-  echo "$(date) Bootstrap: writing playbook and roles..."
-  echo "$PLAYBOOK_B64" | base64 -d > "$ANSIBLE_DIR/configure-rhel-rdma.yml"
-  echo "$RHEL_PREP_B64" | base64 -d > "$ANSIBLE_DIR/roles/rhel_prep/tasks/main.yml"
-  echo "$RDMA_AUTH_B64" | base64 -d > "$ANSIBLE_DIR/roles/rdma_auth/tasks/main.yml"
-  echo "$CLUSTER_SETUP_B64" | base64 -d > "$ANSIBLE_DIR/roles/cluster_setup/tasks/main.yml"
-  echo "$EXTRA_VARS_B64" | base64 -d > "$ANSIBLE_DIR/extra_vars.yml"
 
   echo "$(date) Bootstrap: running Ansible..."
   cd "$ANSIBLE_DIR"

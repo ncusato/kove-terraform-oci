@@ -6,6 +6,10 @@ terraform {
       source  = "oracle/oci"
       version = ">= 5.0.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.4"
+    }
   }
 }
 
@@ -188,6 +192,14 @@ locals {
   cluster_subnet_id  = var.use_existing_vcn ? var.existing_private_subnet_id : oci_core_subnet.cluster[0].id
 }
 
+# Single zip of playbooks to stay under OCI metadata limit (32KB). Only used when run_ansible_from_head = true.
+data "archive_file" "playbooks" {
+  count       = var.run_ansible_from_head ? 1 : 0
+  type        = "zip"
+  source_dir  = "${path.module}/playbooks"
+  output_path = "${path.module}/.terraform/playbooks.zip"
+}
+
 # Bootstrap script inputs (only used when run_ansible_from_head = true)
 locals {
   instance_pool_id  = one(oci_core_cluster_network.bm_cluster.instance_pools).id
@@ -197,17 +209,15 @@ rhsm_password: ${jsonencode(var.rhsm_password)}
 rdma_ping_target: ${jsonencode(var.rdma_ping_target)}
 cluster_ssh_user: ${jsonencode(var.instance_ssh_user)}
 EOT
-  bootstrap_template_vars = {
-    instance_pool_id   = local.instance_pool_id
-    compartment_id     = var.compartment_ocid
-    bm_count           = var.bm_node_count
-    instance_ssh_user  = var.instance_ssh_user
-    playbook_b64       = base64encode(file("${path.module}/playbooks/configure-rhel-rdma.yml"))
-    rhel_prep_b64      = base64encode(file("${path.module}/playbooks/roles/rhel_prep/tasks/main.yml"))
-    rdma_auth_b64      = base64encode(file("${path.module}/playbooks/roles/rdma_auth/tasks/main.yml"))
-    cluster_setup_b64  = base64encode(file("${path.module}/playbooks/roles/cluster_setup/tasks/main.yml"))
-    extra_vars_b64     = base64encode(local.extra_vars_yaml)
-  }
+  # One compressed payload + small extra_vars to keep user_data under 32KB
+  bootstrap_template_vars = var.run_ansible_from_head ? {
+    instance_pool_id  = local.instance_pool_id
+    compartment_id    = var.compartment_ocid
+    bm_count          = var.bm_node_count
+    instance_ssh_user = var.instance_ssh_user
+    payload_b64       = base64encode(file(data.archive_file.playbooks[0].output_path))
+    extra_vars_b64    = base64encode(local.extra_vars_yaml)
+  } : {}
 }
 
 # -------------------------------------------------------------------
