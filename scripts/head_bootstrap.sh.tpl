@@ -17,6 +17,20 @@ do_bootstrap() {
   ANSIBLE_DIR="/opt/oci-hpc-ansible"
   PAYLOAD_B64="${payload_b64}"
   EXTRA_VARS_B64="${extra_vars_b64}"
+  RHSM_USER_B64="${rhsm_username_b64}"
+  RHSM_PASS_B64="${rhsm_password_b64}"
+
+  # Register RHEL with subscription manager first so dnf has repos (required for ansible, unzip, etc.)
+  if [ -n "$RHSM_USER_B64" ] && [ -n "$RHSM_PASS_B64" ]; then
+    RHSM_USER=$(echo "$RHSM_USER_B64" | base64 -d 2>/dev/null)
+    RHSM_PASS=$(echo "$RHSM_PASS_B64" | base64 -d 2>/dev/null)
+    if [ -n "$RHSM_USER" ] && [ -n "$RHSM_PASS" ]; then
+      echo "$(date) Bootstrap: registering with RHSM..."
+      subscription-manager register --username "$RHSM_USER" --password "$RHSM_PASS" --auto-attach --force 2>/dev/null || true
+      subscription-manager release --set=8.8 2>/dev/null || true
+      subscription-manager repos --enable=rhel-8-for-x86_64-baseos-rpms --enable=rhel-8-for-x86_64-appstream-rpms 2>/dev/null || true
+    fi
+  fi
 
   echo "$(date) Bootstrap: installing packages..."
   dnf install -y ansible python3-oci-cli jq unzip || yum install -y ansible python3-oci-cli jq unzip || true
@@ -27,7 +41,11 @@ do_bootstrap() {
   echo "$(date) Bootstrap: extracting playbooks (zip)..."
   mkdir -p "$ANSIBLE_DIR"
   echo "$PAYLOAD_B64" | base64 -d > /tmp/playbooks.zip
-  unzip -o -q /tmp/playbooks.zip -d "$ANSIBLE_DIR"
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -o -q /tmp/playbooks.zip -d "$ANSIBLE_DIR"
+  else
+    python3 -c "import zipfile; zipfile.ZipFile('/tmp/playbooks.zip','r').extractall('$ANSIBLE_DIR')"
+  fi
   rm -f /tmp/playbooks.zip
   echo "$EXTRA_VARS_B64" | base64 -d > "$ANSIBLE_DIR/extra_vars.yml"
 

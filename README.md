@@ -245,7 +245,31 @@ If you set **Run Ansible from head at first boot** to **true** in the stack, the
 
 **Note:** The head node is created after the cluster network so the instance pool exists when the bootstrap script runs. user_data is delivered as a **cloud-init cloud-config** (write script to `/opt/oci-hpc-bootstrap.sh` + runcmd) so it runs reliably on RHEL; the script then waits 90 seconds for instance principal and network, then up to 45 minutes for the instance pool, before running Ansible. Check **`/var/log/oci-hpc-ansible-bootstrap.log`** on the head node for progress. Set **SSH user for instances** to match your image (`cloud-user` for RHEL, `opc` for Oracle Linux). The playbook updates **/etc/hosts** and **passwordless SSH** on all nodes.
 
-**If Ansible still doesn't run:** SSH to the head node and check: (1) `cat /var/log/cloud-init-output.log` and `cat /var/log/cloud-init.log` for cloud-init errors; (2) `ls -la /opt/oci-hpc-bootstrap.sh` to confirm the script was written; (3) run `/opt/oci-hpc-bootstrap.sh` by hand to test (or run the inner logic after `do_bootstrap`). Ensure the head node is in a dynamic group with policy to read instance pool and VNICs.
+**Terraform never runs Ansible** – it only creates the instance with user_data. The bootstrap runs **inside the VM at first boot** via cloud-init. So "Apply complete" in Terraform just means the instance was created; configuration happens asynchronously on the node.
+
+#### Bootstrap didn't run – diagnose on the head node
+
+SSH to the head node (`ssh cloud-user@<head_node_public_ip>` or `opc@...`), then run:
+
+```bash
+# 1) Did cloud-init run and write the script?
+ls -la /opt/oci-hpc-bootstrap.sh
+# If missing, user_data wasn't applied or cloud-init didn't run write_files.
+
+# 2) Cloud-init logs (look for runcmd, write_files, errors)
+sudo tail -100 /var/log/cloud-init-output.log
+sudo grep -i error /var/log/cloud-init.log
+
+# 3) Bootstrap log (if the script ran at all)
+sudo cat /var/log/oci-hpc-ansible-bootstrap.log
+# If empty or missing, the script didn't run or failed before logging.
+
+# 4) Run the bootstrap manually (after fixing dynamic group / instance principal if needed)
+sudo /opt/oci-hpc-bootstrap.sh
+# Then: sudo tail -f /var/log/oci-hpc-ansible-bootstrap.log
+```
+
+If `/opt/oci-hpc-bootstrap.sh` is missing, the image may not be running cloud-init on user_data (e.g. wrong format or cloud-init not enabled). If the script exists but the log is empty, run it manually as above and watch the log for errors (e.g. OCI CLI auth failure = dynamic group not set).
 
 ### Running the RHEL + RDMA Ansible playbook (manual)
 
