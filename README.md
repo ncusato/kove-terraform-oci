@@ -1,5 +1,7 @@
 # OCI HPC BM Cluster Stack
 
+[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip)
+
 A Terraform configuration for provisioning a High-Performance Computing (HPC) cluster on Oracle Cloud Infrastructure (OCI) with Bare Metal nodes.
 
 ## Overview
@@ -119,7 +121,9 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 
 ### Option 1: Deploy via OCI Resource Manager (Recommended)
 
-#### 1. Prepare Stack Archive
+**One-click deploy:** Use the [Deploy to Oracle Cloud](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip) button at the top of this README. It opens OCI Resource Manager with this repository’s source (GitHub archive of the `master` branch). If your default branch is `main`, change the button link to use `main.zip` instead of `master.zip`.
+
+#### 1. Prepare Stack Archive (manual upload)
 
 Create a zip file containing all Terraform files:
 
