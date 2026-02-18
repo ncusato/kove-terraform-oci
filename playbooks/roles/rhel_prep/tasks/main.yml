@@ -4,6 +4,7 @@
   ansible.builtin.hostname:
     name: "{{ bm_prefix }}{{ groups['bm'].index(inventory_hostname)+1 }}"
 
+# RHEL subscription and repos (matches subscription-manager + dnf flow from RHEL docs)
 - name: Register RHEL (idempotent)
   block:
     - name: Check subscription status
@@ -27,11 +28,15 @@
         --password {{ rhsm_password }}
         --auto-attach
 
+- name: Configure subscription-manager to manage repos
+  ansible.builtin.command: subscription-manager config --rhsm.manage_repos=1
+  changed_when: false
+
 - name: Pin RHEL release to 8.8
   ansible.builtin.command: subscription-manager release --set=8.8
   changed_when: "'Release set to' in stdout"
 
-- name: Enable RHEL repos
+- name: Enable RHEL repos (BaseOS and AppStream)
   ansible.builtin.command: >
     subscription-manager repos
     --enable=rhel-8-for-x86_64-baseos-rpms

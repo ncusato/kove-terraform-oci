@@ -91,7 +91,8 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 | `region` | String | Region (pre-filled from your session in the Console) |
 | `compartment_ocid` | String | Compartment where resources will be created |
 | `ssh_public_key` | String | SSH public key to inject into instances |
-| `bm_node_image_ocid` | String | RHEL 8.8 image OCID for BM nodes (also used for head node) |
+| `bm_node_image_ocid` | String | RHEL 8.8 image OCID for BM cluster network nodes |
+| `head_node_image_ocid` | String | *(Optional)* Image for the head node. **Use an Oracle Linux image** so the head can install Ansible without RHSM; the playbook will register RHEL only on the BM nodes. If empty, the head uses the RHEL BM image. |
 
 ### Network Configuration
 
@@ -112,10 +113,13 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `run_ansible_from_head` | Boolean | false | If true, head node runs the RHEL + RDMA Ansible playbook at first boot via cloud-init |
-| `instance_ssh_user` | String | "cloud-user" | SSH user on the image (use `opc` for Oracle Linux, `cloud-user` for RHEL) |
+| `instance_ssh_user` | String | "cloud-user" | SSH user on BM nodes (RHEL; typically `cloud-user`) |
+| `head_node_ssh_user` | String | "" | SSH user on head node only (e.g. `opc` for Oracle Linux). If empty, uses `instance_ssh_user`. |
 | `rhsm_username` | String | "" | RHSM username (required when `run_ansible_from_head = true`) |
 | `rhsm_password` | String | "" | RHSM password (required when `run_ansible_from_head = true`) |
 | `rdma_ping_target` | String | "" | Optional IP for RDMA ping check (e.g. another BM node's RDMA interface) |
+
+**Recommended:** Set **Head node image** to an **Oracle Linux** image. The head then uses free OL repos (no RHSM), installs Ansible and OCI CLI, and runs the playbook; Ansible registers **RHEL only on the BM nodes** and does all installs there.
 
 When `run_ansible_from_head = true`, the head node must be in an OCI **dynamic group** with a policy that allows **instance principal** to list instance pool instances and instance VNICs in the compartment. See **Run Ansible from head node** below for setup.
 

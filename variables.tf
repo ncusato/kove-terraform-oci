@@ -20,7 +20,13 @@ variable "ssh_public_key" {
 
 variable "bm_node_image_ocid" {
   type        = string
-  description = "RHEL 8.8 image OCID for BM.Optimized3.36 nodes (also used for head node)"
+  description = "RHEL 8.8 image OCID for BM.Optimized3.36 nodes (cluster network)"
+}
+
+variable "head_node_image_ocid" {
+  type        = string
+  description = "Image OCID for the head node. Use Oracle Linux to avoid RHSM on the head; Ansible will register RHEL on BM nodes only. If empty, uses bm_node_image_ocid."
+  default     = ""
 }
 
 variable "bm_node_count" {
@@ -102,6 +108,12 @@ variable "rdma_ping_target" {
 
 variable "instance_ssh_user" {
   type        = string
-  description = "SSH user for all instances (e.g. opc for Oracle Linux, cloud-user for RHEL). Must match the default user on your image."
+  description = "SSH user for BM nodes (e.g. cloud-user for RHEL). Used for head too unless head_node_ssh_user is set."
   default     = "cloud-user"
+}
+
+variable "head_node_ssh_user" {
+  type        = string
+  description = "SSH user for the head node only (e.g. opc for Oracle Linux). If empty, uses instance_ssh_user."
+  default     = ""
 }

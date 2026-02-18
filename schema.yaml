@@ -11,6 +11,7 @@ variableGroups:
       - compartment_ocid
       - ssh_public_key
       - bm_node_image_ocid
+      - head_node_image_ocid
 
   - title: "Networking"
     variables:
@@ -23,6 +24,7 @@ variableGroups:
     variables:
       - run_ansible_from_head
       - instance_ssh_user
+      - head_node_ssh_user
       - rhsm_username
       - rhsm_password
       - rdma_ping_target
@@ -61,9 +63,17 @@ variables:
 
   bm_node_image_ocid:
     type: oci:core:image:id
-    title: "RHEL 8.8 Image"
-    description: "RHEL 8.8 image for BM nodes. Also used for the head node."
+    title: "RHEL 8.8 Image (BM nodes)"
+    description: "RHEL 8.8 image for BM cluster network nodes."
     required: true
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+  head_node_image_ocid:
+    type: oci:core:image:id
+    title: "Head node image (optional)"
+    description: "Image for the head node. Use Oracle Linux to avoid RHSM on the head; Ansible will register RHEL on BM nodes only. If empty, uses the RHEL BM image."
+    required: false
     dependsOn:
       compartmentId: ${compartment_ocid}
 
@@ -109,9 +119,16 @@ variables:
 
   instance_ssh_user:
     type: string
-    title: "SSH user for instances"
-    description: "Default user on the image (e.g. opc for Oracle Linux, cloud-user for RHEL). Used for Ansible and inventory."
+    title: "SSH user for BM nodes"
+    description: "Default user on RHEL BM image (e.g. cloud-user). Used for Ansible inventory for BM nodes."
     default: "cloud-user"
+    required: false
+
+  head_node_ssh_user:
+    type: string
+    title: "SSH user for head node (optional)"
+    description: "Default user on head node image (e.g. opc for Oracle Linux). If empty, uses SSH user for BM nodes."
+    default: ""
     required: false
 
   rhsm_username:

@@ -211,14 +211,15 @@ cluster_ssh_user: ${jsonencode(var.instance_ssh_user)}
 EOT
   # One compressed payload + small extra_vars to keep user_data under 32KB. RHSM b64 so script can register before dnf.
   bootstrap_template_vars = var.run_ansible_from_head ? {
-    instance_pool_id  = local.instance_pool_id
-    compartment_id    = var.compartment_ocid
-    bm_count          = var.bm_node_count
-    instance_ssh_user = var.instance_ssh_user
-    payload_b64       = filebase64(data.archive_file.playbooks[0].output_path)
-    extra_vars_b64    = base64encode(local.extra_vars_yaml)
-    rhsm_username_b64 = base64encode(var.rhsm_username)
-    rhsm_password_b64 = base64encode(var.rhsm_password)
+    instance_pool_id   = local.instance_pool_id
+    compartment_id     = var.compartment_ocid
+    bm_count           = var.bm_node_count
+    instance_ssh_user  = var.instance_ssh_user
+    head_node_ssh_user = var.head_node_ssh_user != "" ? var.head_node_ssh_user : var.instance_ssh_user
+    payload_b64        = filebase64(data.archive_file.playbooks[0].output_path)
+    extra_vars_b64     = base64encode(local.extra_vars_yaml)
+    rhsm_username_b64  = base64encode(var.rhsm_username)
+    rhsm_password_b64  = base64encode(var.rhsm_password)
   } : {}
 }
 
@@ -240,8 +241,8 @@ resource "oci_core_instance" "head_node" {
 
   source_details {
     source_type = "image"
-    # Reuse the RHEL 8.8 BM image OCID for head node to simplify stack inputs.
-    source_id   = var.bm_node_image_ocid
+    # Oracle Linux recommended for head so dnf works without RHSM; Ansible then registers RHEL on BM nodes.
+    source_id   = var.head_node_image_ocid != "" ? var.head_node_image_ocid : var.bm_node_image_ocid
   }
 
   create_vnic_details {

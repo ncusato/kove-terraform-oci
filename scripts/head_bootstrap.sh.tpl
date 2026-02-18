@@ -14,37 +14,43 @@ do_bootstrap() {
   COMPARTMENT_ID="${compartment_id}"
   BM_COUNT=${bm_count}
   SSH_USER="${instance_ssh_user}"
+  HEAD_SSH_USER="${head_node_ssh_user}"
   ANSIBLE_DIR="/opt/oci-hpc-ansible"
   PAYLOAD_B64="${payload_b64}"
   EXTRA_VARS_B64="${extra_vars_b64}"
   RHSM_USER_B64="${rhsm_username_b64}"
   RHSM_PASS_B64="${rhsm_password_b64}"
 
-  # Register RHEL with subscription manager first so dnf has repos (required for ansible, unzip, etc.)
-  if [ -n "$RHSM_USER_B64" ] && [ -n "$RHSM_PASS_B64" ]; then
+  # Register with RHSM only when head node is RHEL (Oracle Linux has free repos and does not need registration)
+  if grep -q "Red Hat" /etc/redhat-release 2>/dev/null && [ -n "$RHSM_USER_B64" ] && [ -n "$RHSM_PASS_B64" ]; then
     RHSM_USER=$(echo "$RHSM_USER_B64" | base64 -d 2>/dev/null)
     RHSM_PASS=$(echo "$RHSM_PASS_B64" | base64 -d 2>/dev/null)
     if [ -n "$RHSM_USER" ] && [ -n "$RHSM_PASS" ]; then
-      echo "$(date) Bootstrap: registering with RHSM..."
+      echo "$(date) Bootstrap: registering head node (RHEL) with RHSM..."
       subscription-manager register --username "$RHSM_USER" --password "$RHSM_PASS" --auto-attach --force 2>/dev/null || true
       subscription-manager release --set=8.8 2>/dev/null || true
       subscription-manager repos --enable=rhel-8-for-x86_64-baseos-rpms --enable=rhel-8-for-x86_64-appstream-rpms 2>/dev/null || true
     fi
+  else
+    echo "$(date) Bootstrap: head node is not RHEL (or no RHSM vars); skipping RHSM registration (e.g. Oracle Linux)."
   fi
 
-  echo "$(date) Bootstrap: installing packages..."
-  dnf install -y ansible python3-oci-cli jq unzip || yum install -y ansible python3-oci-cli jq unzip || true
-  if ! command -v oci >/dev/null 2>&1; then
-    pip3 install oci-cli 2>/dev/null || true
-  fi
+  # Install packages from standard RHEL repos; Ansible/OCI CLI from pip (not in default repos)
+  echo "$(date) Bootstrap: installing packages (python3, pip, jq, unzip)..."
+  dnf install -y python3 python3-pip jq unzip || yum install -y python3 python3-pip jq unzip || true
+  echo "$(date) Bootstrap: installing Ansible and OCI CLI via pip..."
+  pip3 install --break-system-packages ansible oci-cli 2>/dev/null || pip3 install ansible oci-cli 2>/dev/null || true
 
   echo "$(date) Bootstrap: extracting playbooks (zip)..."
   mkdir -p "$ANSIBLE_DIR"
   echo "$PAYLOAD_B64" | base64 -d > /tmp/playbooks.zip
   if command -v unzip >/dev/null 2>&1; then
     unzip -o -q /tmp/playbooks.zip -d "$ANSIBLE_DIR"
-  else
+  elif command -v python3 >/dev/null 2>&1; then
     python3 -c "import zipfile; zipfile.ZipFile('/tmp/playbooks.zip','r').extractall('$ANSIBLE_DIR')"
+  else
+    echo "$(date) Bootstrap: ERROR: need unzip or python3 to extract playbooks" >&2
+    exit 1
   fi
   rm -f /tmp/playbooks.zip
   echo "$EXTRA_VARS_B64" | base64 -d > "$ANSIBLE_DIR/extra_vars.yml"
@@ -64,7 +70,7 @@ do_bootstrap() {
   mkdir -p "$ANSIBLE_DIR/inventory"
   HEAD_IP=$(hostname -I | awk '{print $1}')
   echo "[head]
-head-node ansible_host=$HEAD_IP ansible_user=$SSH_USER
+head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER
 
 [bm]" > "$ANSIBLE_DIR/inventory/hosts"
 
