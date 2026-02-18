@@ -1,12 +1,13 @@
 #!/bin/bash
-# Cloud-init / user_data script: run on head node first boot.
-# Installs Ansible + OCI CLI, discovers BM nodes from instance pool, runs configure-rhel-rdma playbook.
-# Runs main logic after a delay so instance principal and network are ready.
+# Bootstrap: installs Ansible + OCI CLI, discovers BM nodes, runs configure-rhel-rdma playbook.
+# Delivered via cloud-config write_files + runcmd so cloud-init always runs it on RHEL/OCI.
 set -e
 LOG=/var/log/oci-hpc-ansible-bootstrap.log
+mkdir -p /var/log
+echo "$(date) Bootstrap: script started (will run main logic in 90s)" | tee -a "$LOG"
 
 do_bootstrap() {
-  exec > >(tee -a "$LOG") 2>&1
+  exec >> "$LOG" 2>&1
   echo "$(date) Bootstrap: starting..."
 
   INSTANCE_POOL_ID="${instance_pool_id}"
@@ -73,6 +74,6 @@ bm" >> "$ANSIBLE_DIR/inventory/hosts"
   echo "$(date) Bootstrap: done."
 }
 
-# Run main bootstrap after delay so instance principal and network are ready; exit so cloud-init can finish.
-( sleep 90; do_bootstrap ) >> "$LOG" 2>&1 &
+# Run main logic after delay so instance principal and network are ready. Background so runcmd can exit.
+( nohup bash -c "$(declare -f do_bootstrap); sleep 90; do_bootstrap" >> "$LOG" 2>&1 & )
 echo "$(date) Bootstrap: scheduled in 90s, log: $LOG"

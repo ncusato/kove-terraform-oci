@@ -243,7 +243,9 @@ If you set **Run Ansible from head at first boot** to **true** in the stack, the
 
 3. **Apply the stack** with `run_ansible_from_head = true`, `rhsm_username`, and `rhsm_password` set. After the head node boots, check `/var/log/oci-hpc-ansible-bootstrap.log` on the head node for playbook progress.
 
-**Note:** The head node is created after the cluster network so the instance pool exists when the bootstrap script runs. The script waits 90 seconds for instance principal and network, then up to 45 minutes for the instance pool to reach the expected BM count, before running Ansible. Check `/var/log/oci-hpc-ansible-bootstrap.log` on the head node for progress. Set **SSH user for instances** to match your image (`cloud-user` for RHEL, `opc` for Oracle Linux) so the inventory and playbook connect correctly. The playbook updates **/etc/hosts** on all nodes and configures **passwordless SSH** between all cluster nodes.
+**Note:** The head node is created after the cluster network so the instance pool exists when the bootstrap script runs. user_data is delivered as a **cloud-init cloud-config** (write script to `/opt/oci-hpc-bootstrap.sh` + runcmd) so it runs reliably on RHEL; the script then waits 90 seconds for instance principal and network, then up to 45 minutes for the instance pool, before running Ansible. Check **`/var/log/oci-hpc-ansible-bootstrap.log`** on the head node for progress. Set **SSH user for instances** to match your image (`cloud-user` for RHEL, `opc` for Oracle Linux). The playbook updates **/etc/hosts** and **passwordless SSH** on all nodes.
+
+**If Ansible still doesn't run:** SSH to the head node and check: (1) `cat /var/log/cloud-init-output.log` and `cat /var/log/cloud-init.log` for cloud-init errors; (2) `ls -la /opt/oci-hpc-bootstrap.sh` to confirm the script was written; (3) run `/opt/oci-hpc-bootstrap.sh` by hand to test (or run the inner logic after `do_bootstrap`). Ensure the head node is in a dynamic group with policy to read instance pool and VNICs.
 
 ### Running the RHEL + RDMA Ansible playbook (manual)
 
@@ -286,7 +288,8 @@ kove-oci-build-2/
 ├── outputs.tf                  # Terraform outputs
 ├── schema.yaml                 # OCI Resource Manager stack UI schema
 ├── scripts/
-│   └── head_bootstrap.sh.tpl   # Cloud-init script: run Ansible from head (when run_ansible_from_head = true)
+│   ├── head_bootstrap.sh.tpl           # Bootstrap script (written to /opt by cloud-init)
+│   └── cloud_init_bootstrap.yaml.tpl  # Cloud-config: write script + runcmd (ensures run on RHEL)
 ├── inventory.tpl               # Ansible inventory template (full HPC stack)
 └── playbooks/
     ├── configure-rhel-rdma.yml # RHEL + RDMA config (run after stack apply)

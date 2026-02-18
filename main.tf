@@ -240,7 +240,7 @@ resource "oci_core_instance" "head_node" {
 
   metadata = merge(
     { ssh_authorized_keys = var.ssh_public_key },
-    var.run_ansible_from_head ? { user_data = base64encode(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars)) } : {}
+    var.run_ansible_from_head ? { user_data = base64encode(templatefile("${path.module}/scripts/cloud_init_bootstrap.yaml.tpl", { bootstrap_script_b64 = base64encode(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars)) })) } : {}
   )
 }
 
