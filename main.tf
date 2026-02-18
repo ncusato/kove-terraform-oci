@@ -39,6 +39,16 @@ data "oci_core_vcns" "existing_vcns" {
   compartment_id = var.compartment_ocid
 }
 
+# Latest Oracle Linux 8 image for head node (used when head_node_image_ocid is empty)
+data "oci_core_images" "ol8_head" {
+  compartment_id           = var.compartment_ocid
+  operating_system         = "Oracle Linux"
+  operating_system_version = "8"
+  shape                    = "VM.Standard.E6.Flex"
+  sort_by                  = "TIMECREATED"
+  sort_order               = "DESC"
+}
+
 # -------------------------------------------------------------------
 # Networking (optional create vs existing)
 # -------------------------------------------------------------------
@@ -241,8 +251,8 @@ resource "oci_core_instance" "head_node" {
 
   source_details {
     source_type = "image"
-    # Oracle Linux recommended for head so dnf works without RHSM; Ansible then registers RHEL on BM nodes.
-    source_id   = var.head_node_image_ocid != "" ? var.head_node_image_ocid : var.bm_node_image_ocid
+    # When head_node_image_ocid is empty, use latest OL8 so head doesn't need RHSM; Ansible registers RHEL on BM only.
+    source_id   = var.head_node_image_ocid != "" ? var.head_node_image_ocid : (length(data.oci_core_images.ol8_head.images) > 0 ? data.oci_core_images.ol8_head.images[0].id : var.bm_node_image_ocid)
   }
 
   create_vnic_details {

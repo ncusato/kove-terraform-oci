@@ -92,7 +92,7 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 | `compartment_ocid` | String | Compartment where resources will be created |
 | `ssh_public_key` | String | SSH public key to inject into instances |
 | `bm_node_image_ocid` | String | RHEL 8.8 image OCID for BM cluster network nodes |
-| `head_node_image_ocid` | String | *(Optional)* Image for the head node. **Use an Oracle Linux image** so the head can install Ansible without RHSM; the playbook will register RHEL only on the BM nodes. If empty, the head uses the RHEL BM image. |
+| `head_node_image_ocid` | String | *(Optional)* Image for the head node. **If empty, latest Oracle Linux 8 is used** (recommended; no RHSM on head). Ansible registers RHEL only on BM nodes. Set to override (e.g. a specific OL image). |
 
 ### Network Configuration
 

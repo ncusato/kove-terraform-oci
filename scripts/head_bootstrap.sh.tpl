@@ -35,8 +35,8 @@ do_bootstrap() {
     chown -R "$_u:$_u" "$_d" 2>/dev/null || true
   done
 
-  # Register with RHSM only when head node is RHEL (Oracle Linux has free repos and does not need registration)
-  if grep -q "Red Hat" /etc/redhat-release 2>/dev/null && [ -n "$RHSM_USER_B64" ] && [ -n "$RHSM_PASS_B64" ]; then
+  # Register with RHSM only when head node is RHEL (skip for Oracle Linux; OL has free repos)
+  if grep -q "Red Hat" /etc/redhat-release 2>/dev/null && ! grep -qi "Oracle" /etc/redhat-release 2>/dev/null && [ -n "$RHSM_USER_B64" ] && [ -n "$RHSM_PASS_B64" ]; then
     RHSM_USER=$(echo "$RHSM_USER_B64" | base64 -d 2>/dev/null)
     RHSM_PASS=$(echo "$RHSM_PASS_B64" | base64 -d 2>/dev/null)
     if [ -n "$RHSM_USER" ] && [ -n "$RHSM_PASS" ]; then
@@ -85,7 +85,7 @@ do_bootstrap() {
   mkdir -p "$ANSIBLE_DIR/inventory"
   HEAD_IP=$(hostname -I | awk '{print $1}')
   echo "[head]
-head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER
+head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER ansible_connection=local
 
 [bm]" > "$ANSIBLE_DIR/inventory/hosts"
 

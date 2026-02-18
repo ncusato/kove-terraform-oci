@@ -25,7 +25,7 @@ variable "bm_node_image_ocid" {
 
 variable "head_node_image_ocid" {
   type        = string
-  description = "Image OCID for the head node. Use Oracle Linux to avoid RHSM on the head; Ansible will register RHEL on BM nodes only. If empty, uses bm_node_image_ocid."
+  description = "Image OCID for the head node. If empty, uses latest Oracle Linux 8 (so head needs no RHSM); Ansible registers RHEL on BM only. Set to override (e.g. specific OL version)."
   default     = ""
 }
 

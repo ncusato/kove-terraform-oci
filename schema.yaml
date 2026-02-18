@@ -72,7 +72,7 @@ variables:
   head_node_image_ocid:
     type: oci:core:image:id
     title: "Head node image (optional)"
-    description: "Image for the head node. Use Oracle Linux to avoid RHSM on the head; Ansible will register RHEL on BM nodes only. If empty, uses the RHEL BM image."
+    description: "Image for the head node. If empty, uses latest Oracle Linux 8 (recommended; no RHSM on head). Ansible registers RHEL on BM nodes only."
     required: false
     dependsOn:
       compartmentId: ${compartment_ocid}
