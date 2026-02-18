@@ -72,12 +72,12 @@ do_bootstrap() {
   echo "$(date) Bootstrap: waiting for instance pool to have $BM_COUNT instances (timeout 45 min)..."
   for i in $(seq 1 90); do
     N=$(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null | jq -r '.data | length' 2>/dev/null || echo "0")
-    N=${N:-0}
-    if [ "${N}" -eq "$BM_COUNT" ] 2>/dev/null; then
+    N=$${N:-0}
+    if [ "$${N}" -eq "$BM_COUNT" ] 2>/dev/null; then
       echo "$(date) Bootstrap: found $BM_COUNT instances."
       break
     fi
-    echo "$(date) Bootstrap: have ${N}/$BM_COUNT instances, waiting..."
+    echo "$(date) Bootstrap: have $${N}/$BM_COUNT instances, waiting..."
     sleep 30
   done
 
