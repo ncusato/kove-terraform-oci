@@ -1,10 +1,10 @@
 ---
 # Cluster-wide: /etc/hosts and passwordless SSH for all nodes.
-# Uses cluster_ssh_user (or ansible_user) for the SSH key home.
+# Use each host's SSH user (ansible_user from inventory) so head=opc and BM=cloud-user both work.
 
-- name: Set cluster SSH user fact
+- name: Set cluster SSH user fact (per-host; prefer inventory ansible_user over global cluster_ssh_user)
   ansible.builtin.set_fact:
-    _cluster_user: "{{ cluster_ssh_user | default(ansible_user) | default('opc') }}"
+    _cluster_user: "{{ ansible_user | default(cluster_ssh_user) | default('opc') }}"
 
 - name: Ensure .ssh directory exists for cluster user
   ansible.builtin.file:
