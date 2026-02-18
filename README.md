@@ -87,8 +87,8 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `tenancy_ocid` | String | OCI Tenancy OCID |
-| `region` | String | OCI region (e.g., us-ashburn-1, eu-frankfurt-1) |
+| `tenancy_ocid` | String | Tenancy OCID (pre-filled from your session in the Console) |
+| `region` | String | Region (pre-filled from your session in the Console) |
 | `compartment_ocid` | String | Compartment where resources will be created |
 | `ssh_public_key` | String | SSH public key to inject into instances |
 | `bm_node_image_ocid` | String | RHEL 8.8 image OCID for BM nodes (also used for head node) |
@@ -143,12 +143,11 @@ zip -r oci-hpc-bm-cluster-stack.zip main.tf variables.tf outputs.tf schema.yaml 
 
 #### 3. Configure Stack Variables
 
-**Required Variables**:
-- `tenancy_ocid`: Your tenancy OCID (often pre-filled)
-- `region`: OCI region (e.g., us-ashburn-1, often pre-filled)
-- `compartment_ocid`: Compartment where resources will be created
-- `ssh_public_key`: SSH public key for instance access
-- `bm_node_image_ocid`: **RHEL 8.8** image OCID for BM nodes (also used for head node)
+**Required Variables** (in the Console):
+- **Tenancy OCID** and **Region** are pre-filled from your session; you usually don’t need to change them.
+- **Compartment**: Where to create resources (dropdown filtered by tenancy).
+- **SSH Public Key**: For instance access.
+- **RHEL 8.8 Image**: Image for BM and head node (dropdown filtered by compartment).
 
 **Optional Network Variables**:
 - `use_existing_vcn`: Set to `true` to use existing VCN (default: `false`)

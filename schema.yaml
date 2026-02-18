@@ -1,16 +1,11 @@
 title: "OCI HPC BM Cluster Stack"
 description: "Provision a head node and 4 BM.Optimized3.36 nodes on OCI."
-informationalText: "Provide one RHEL 8.8 image OCID for BM nodes; the same image is used for the head node."
+informationalText: "Provide one RHEL 8.8 image OCID for BM nodes; the same image is used for the head node. Tenancy and region are pre-filled from your session."
 schemaVersion: 1.1.0
 version: "20190304"
 locale: "en"
 
 variableGroups:
-  - title: "Stack context"
-    variables:
-      - tenancy_ocid
-      - region
-
   - title: "Target Configuration"
     variables:
       - compartment_ocid
@@ -24,24 +19,31 @@ variableGroups:
       - existing_public_subnet_id
       - existing_private_subnet_id
 
+  - title: "Stack context (pre-filled from your session)"
+    variables:
+      - tenancy_ocid
+      - region
+
 variables:
   tenancy_ocid:
-    type: oci:identity:tenancy:id
+    type: string
     title: "Tenancy OCID"
-    description: "OCI tenancy where this stack runs."
+    description: "Pre-filled from your session. Change only if deploying to a different tenancy."
     required: true
 
   region:
-    type: string
+    type: oci:identity:region:name
     title: "Region"
-    description: "OCI region, for example us-ashburn-1."
+    description: "Pre-filled from your session. Change only if deploying to a different region."
     required: true
 
   compartment_ocid:
     type: oci:identity:compartment:id
-    title: "Compartment OCID"
+    title: "Compartment"
     description: "Compartment where resources are created."
     required: true
+    dependsOn:
+      compartmentId: ${tenancy_ocid}
 
   ssh_public_key:
     type: oci:core:ssh:publickey
@@ -51,34 +53,44 @@ variables:
 
   bm_node_image_ocid:
     type: oci:core:image:id
-    title: "RHEL 8.8 Image OCID"
-    description: "RHEL 8.8 image for BM nodes. This image is also used for the head node."
+    title: "RHEL 8.8 Image"
+    description: "RHEL 8.8 image for BM nodes. Also used for the head node."
     required: true
+    dependsOn:
+      compartmentId: ${compartment_ocid}
 
   use_existing_vcn:
     type: boolean
     title: "Use Existing VCN"
-    description: "If true, provide existing VCN and subnet OCIDs."
+    description: "If true, provide existing VCN and subnet OCIDs below."
     default: false
     required: true
 
   existing_vcn_id:
     type: oci:core:vcn:id
-    title: "Existing VCN OCID"
-    description: "Required when use_existing_vcn is true."
+    title: "Existing VCN"
+    description: "Required when Use Existing VCN is true."
     required: false
+    dependsOn:
+      compartmentId: ${compartment_ocid}
 
   existing_public_subnet_id:
     type: oci:core:subnet:id
-    title: "Existing Public Subnet OCID"
-    description: "Public subnet for the head node when use_existing_vcn is true."
+    title: "Existing Public Subnet"
+    description: "Public subnet for the head node when using existing VCN."
     required: false
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+      vcnId: ${existing_vcn_id}
 
   existing_private_subnet_id:
     type: oci:core:subnet:id
-    title: "Existing Private Subnet OCID"
-    description: "Private subnet for BM nodes when use_existing_vcn is true."
+    title: "Existing Private Subnet"
+    description: "Private subnet for BM nodes when using existing VCN."
     required: false
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+      vcnId: ${existing_vcn_id}
 
 outputs:
   created_vcn_id:
