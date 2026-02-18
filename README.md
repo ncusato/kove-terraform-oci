@@ -224,26 +224,27 @@ After deployment, Terraform provides:
 
 If you set **Run Ansible from head at first boot** to **true** in the stack, the head node runs the RHEL + RDMA playbook automatically at first boot. It uses **instance principal** to discover BM node private IPs from the instance pool (no API keys on the instance).
 
-**Requirement:** Put the head node in a **dynamic group** and grant that group permission to list instance pool instances and instance VNICs in the compartment.
+**Requirement:** Put the head node in a **dynamic group** and grant that group permission so the OCI CLI can use **instance principal** (no config file). The bootstrap script sets `OCI_CLI_AUTH=instance_principal` and creates `~/.oci/config` with `auth=instance_principal` so `oci` commands work automatically. You must create the dynamic group and policies **before** (or right after) the stack runs, then re-run the bootstrap if it had already failed.
 
-1. **Create a dynamic group** (e.g. name: `hpc-head-instances`):
-   - **Matching rule**: `ALL { instance.id = '<head_node_instance_ocid>' }`  
-     Or match by compartment: `ALL { resource.compartment.id = '<compartment_ocid>' }` and narrow with a tag if needed.
-   - To match the head node by compartment and name, you can use:  
-     `ALL { resource.type = 'computeinstance', resource.compartment.id = '<compartment_ocid>' }`  
-     (Then restrict the policy to only the head node by resource name if your policy language supports it, or use a tag on the head node and match `ALL { instance.compartment.id = '...', tag.YourTag.Key = 'head' }`.)
+1. **Create a dynamic group** (same idea as [oci-hpc](https://github.com/oracle-quickstart/oci-hpc)):  
+   - **Name**: e.g. `instance_principal` or `hpc-head-instances`  
+   - **Matching rule** (use your compartment OCID from the stack):
+     ```
+     Any { instance.compartment.id = 'ocid1.compartment.oc1..aaaaaaaa...' }
+     ```
+     That matches all compute instances in that compartment. You can narrow later (e.g. by tag) if needed.
 
-2. **Create a policy** in the compartment (or tenancy) allowing the dynamic group to read instance pool and instance details:
-   ```hcl
-   Allow dynamic-group hpc-head-instances to read instance-family in compartment <compartment_name>
-   Allow dynamic-group hpc-head-instances to use virtual-network-family in compartment <compartment_name>
+2. **Create a policy** in the compartment (or tenancy) so the dynamic group can list instance pools and VNICs:
    ```
-   Or minimal for the bootstrap script:
+   Allow dynamic-group instance_principal to manage compute-management-family in compartment <compartment_name>
+   Allow dynamic-group instance_principal to read instance-family in compartment <compartment_name>
+   Allow dynamic-group instance_principal to use virtual-network-family in compartment <compartment_name>
    ```
-   Allow dynamic-group hpc-head-instances to { instance-family } in compartment <compartment_name>
-   Allow dynamic-group hpc-head-instances to { VNIC_READ } in compartment <compartment_name>
+   Or a single broad policy (as in oci-hpc):
    ```
-   (Use `read instance-family` and `read virtual-network-family` if your tenancy uses the newer verb style.)
+   Allow dynamic-group instance_principal to manage all-resources in compartment <compartment_name>
+   ```
+   Use the same dynamic group name as in step 1.
 
 3. **Apply the stack** with `run_ansible_from_head = true`, `rhsm_username`, and `rhsm_password` set. After the head node boots, check `/var/log/oci-hpc-ansible-bootstrap.log` on the head node for playbook progress.
 
@@ -274,6 +275,30 @@ sudo /opt/oci-hpc-bootstrap.sh
 ```
 
 If `/opt/oci-hpc-bootstrap.sh` is missing, the image may not be running cloud-init on user_data (e.g. wrong format or cloud-init not enabled). If the script exists but the log is empty, run it manually as above and watch the log for errors (e.g. OCI CLI auth failure = dynamic group not set).
+
+#### Verify the playbook ran
+
+If the playbook ran successfully, you should see **cluster entries in `/etc/hosts`** and **passwordless SSH** between nodes. Run these on the head node:
+
+```bash
+# 1) Did the bootstrap script ever run Ansible?
+sudo grep -E "running Ansible|Bootstrap: done|have [0-9]+/4 instances" /var/log/oci-hpc-ansible-bootstrap.log
+# If you see "have 0/4 instances" until the end, the script never got BM node IPs (instance principal / dynamic group issue) and never ran the playbook.
+
+# 2) Was the inventory built with BM nodes?
+cat /opt/oci-hpc-ansible/inventory/hosts
+# Should list [head] with head-node and [bm] with bm-node-1, bm-node-2, ... If [bm] is empty, OCI CLI couldn't list the instance pool (fix dynamic group).
+
+# 3) After playbook runs: /etc/hosts should have cluster hostnames
+cat /etc/hosts
+# Expect lines like: <head_ip> head-node headnode, <bm1_ip> bm-node-1, etc. If you only see localhost and headnode from cloud-init, the playbook never ran.
+
+# 4) Instance principal working? (from head node; use real OCIDs from stack outputs, no angle brackets)
+oci compute-management instance-pool list-instances --instance-pool-id YOUR_INSTANCE_POOL_OCID --compartment-id YOUR_COMPARTMENT_OCID --all
+# If this fails (e.g. "Authorization failed" or "NotAuthenticated"), add the head node to a dynamic group with policy to read instance pools and VNICs. Without this, the script stays at "have 0/4 instances" and never runs the playbook.
+```
+
+**Why `/etc/hosts` has no cluster entries:** The playbook (which adds those entries) only runs **after** the bootstrap script sees **4/4 instances** in the pool and builds the inventory. If the head node can't call the OCI API (missing dynamic group), the script stays at "have 0/4 instances" and never runs the playbook. Fix the dynamic group, then run `sudo /opt/oci-hpc-bootstrap.sh` again (or run the playbook manually with a hand-built inventory).
 
 ### Running the RHEL + RDMA Ansible playbook (manual)
 

@@ -21,6 +21,20 @@ do_bootstrap() {
   RHSM_USER_B64="${rhsm_username_b64}"
   RHSM_PASS_B64="${rhsm_password_b64}"
 
+  # Ensure pip-installed binaries (ansible-playbook, oci) are on PATH when script runs non-interactively
+  export PATH="/usr/local/bin:/usr/bin:$PATH"
+  # Use instance principal for OCI CLI (no config file; head node must be in a dynamic group with policy)
+  export OCI_CLI_AUTH=instance_principal
+  # So manual 'oci' from head node also works, create minimal config for HEAD_SSH_USER
+  for _u in root "$HEAD_SSH_USER"; do
+    [ -z "$_u" ] && continue
+    _d="/home/$_u/.oci"
+    [ "$_u" = "root" ] && _d="/root/.oci"
+    mkdir -p "$_d"
+    printf '[DEFAULT]\nauth=instance_principal\n' > "$_d/config"
+    chown -R "$_u:$_u" "$_d" 2>/dev/null || true
+  done
+
   # Register with RHSM only when head node is RHEL (Oracle Linux has free repos and does not need registration)
   if grep -q "Red Hat" /etc/redhat-release 2>/dev/null && [ -n "$RHSM_USER_B64" ] && [ -n "$RHSM_PASS_B64" ]; then
     RHSM_USER=$(echo "$RHSM_USER_B64" | base64 -d 2>/dev/null)
@@ -57,12 +71,13 @@ do_bootstrap() {
 
   echo "$(date) Bootstrap: waiting for instance pool to have $BM_COUNT instances (timeout 45 min)..."
   for i in $(seq 1 90); do
-    N=$(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null | jq -r 'length' 2>/dev/null || echo "0")
-    if [ "$N" -eq "$BM_COUNT" ] 2>/dev/null; then
+    N=$(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null | jq -r '.data | length' 2>/dev/null || echo "0")
+    N=${N:-0}
+    if [ "${N}" -eq "$BM_COUNT" ] 2>/dev/null; then
       echo "$(date) Bootstrap: found $BM_COUNT instances."
       break
     fi
-    echo "$(date) Bootstrap: have $N/$BM_COUNT instances, waiting..."
+    echo "$(date) Bootstrap: have ${N}/$BM_COUNT instances, waiting..."
     sleep 30
   done
 
@@ -90,7 +105,8 @@ bm" >> "$ANSIBLE_DIR/inventory/hosts"
   echo "$(date) Bootstrap: running Ansible..."
   cd "$ANSIBLE_DIR"
   export ANSIBLE_HOST_KEY_CHECKING=False
-  ansible-playbook -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml || true
+  ANSIBLE_PLAYBOOK=$(command -v ansible-playbook 2>/dev/null || echo "/usr/local/bin/ansible-playbook")
+  $ANSIBLE_PLAYBOOK -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml || true
 
   echo "$(date) Bootstrap: done."
 }
