@@ -305,13 +305,8 @@ resource "oci_core_cluster_network" "bm_cluster" {
   }
 }
 
-# Instance pool instances (for output IPs)
-data "oci_core_instance_pool_instances" "bm_pool_instances" {
-  instance_pool_id = one(oci_core_cluster_network.bm_cluster.instance_pools).id
-  compartment_id   = var.compartment_ocid
-}
-
-data "oci_core_instance" "bm_instance" {
-  for_each    = { for inst in data.oci_core_instance_pool_instances.bm_pool_instances.instances : inst.instance_id => inst }
-  instance_id = each.key
-}
+# BM private IPs are not available as Terraform outputs in a single apply because
+# the instance pool instances list is only known after apply. Use the head node
+# bootstrap inventory (/opt/oci-hpc-ansible/inventory/hosts when run_ansible_from_head
+# is true) or run: oci compute-management instance-pool list-instances --instance-pool-id <id>
+# then oci compute instance list-vnics --instance-id <id> for each instance.
