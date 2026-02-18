@@ -1,0 +1,113 @@
+title: "OCI HPC BM Cluster Stack"
+description: "Provision a head node and 4 BM.Optimized3.36 nodes on OCI."
+informationalText: "Provide one RHEL 8.8 image OCID for BM nodes; the same image is used for the head node."
+schemaVersion: 1.1.0
+version: "20190304"
+locale: "en"
+
+variableGroups:
+  - title: "Authentication"
+    variables:
+      - tenancy_ocid
+      - user_ocid
+      - fingerprint
+      - private_key_path
+      - region
+
+  - title: "Target Configuration"
+    variables:
+      - compartment_ocid
+      - ssh_public_key
+      - bm_node_image_ocid
+
+  - title: "Networking"
+    variables:
+      - use_existing_vcn
+      - existing_vcn_id
+      - existing_public_subnet_id
+      - existing_private_subnet_id
+
+variables:
+  tenancy_ocid:
+    type: oci:identity:tenancy:id
+    title: "Tenancy OCID"
+    description: "OCI tenancy where this stack runs."
+    required: true
+
+  user_ocid:
+    type: oci:identity:user:id
+    title: "User OCID"
+    description: "OCI user OCID for API key authentication."
+    required: true
+
+  fingerprint:
+    type: string
+    title: "API Key Fingerprint"
+    description: "Fingerprint for the API key used by the OCI provider."
+    required: true
+
+  private_key_path:
+    type: string
+    title: "Private Key Path"
+    description: "Path to OCI API private key accessible by Resource Manager job."
+    required: true
+
+  region:
+    type: string
+    title: "Region"
+    description: "OCI region, for example us-ashburn-1."
+    required: true
+
+  compartment_ocid:
+    type: oci:identity:compartment:id
+    title: "Compartment OCID"
+    description: "Compartment where resources are created."
+    required: true
+
+  ssh_public_key:
+    type: oci:core:ssh:publickey
+    title: "SSH Public Key"
+    description: "Public key injected into all instances."
+    required: true
+
+  bm_node_image_ocid:
+    type: oci:core:image:id
+    title: "RHEL 8.8 Image OCID"
+    description: "RHEL 8.8 image for BM nodes. This image is also used for the head node."
+    required: true
+
+  use_existing_vcn:
+    type: boolean
+    title: "Use Existing VCN"
+    description: "If true, provide existing VCN and subnet OCIDs."
+    default: false
+    required: true
+
+  existing_vcn_id:
+    type: oci:core:vcn:id
+    title: "Existing VCN OCID"
+    description: "Required when use_existing_vcn is true."
+    required: false
+
+  existing_public_subnet_id:
+    type: oci:core:subnet:id
+    title: "Existing Public Subnet OCID"
+    description: "Public subnet for the head node when use_existing_vcn is true."
+    required: false
+
+  existing_private_subnet_id:
+    type: oci:core:subnet:id
+    title: "Existing Private Subnet OCID"
+    description: "Private subnet for BM nodes when use_existing_vcn is true."
+    required: false
+
+outputs:
+  created_vcn_id:
+    title: "Created/Selected VCN OCID"
+    visible: true
+  head_node_public_ip:
+    title: "Head Node Public IP"
+    visible: true
+  bm_node_private_ips:
+    title: "BM Node Private IPs"
+    visible: true

@@ -1,0 +1,86 @@
+---
+- name: Set hostname pattern on BM nodes
+  when: "'bm' in group_names"
+  ansible.builtin.hostname:
+    name: "{{ bm_prefix }}{{ groups['bm'].index(inventory_hostname)+1 }}"
+
+- name: Register RHEL (idempotent)
+  block:
+    - name: Check subscription status
+      ansible.builtin.command: subscription-manager status
+      register: sm_status
+      failed_when: false
+      changed_when: false
+
+    - name: Register if not already
+      ansible.builtin.command: >
+        subscription-manager register
+        --username {{ rhsm_username }}
+        --password {{ rhsm_password }}
+        --auto-attach
+      when: "'Overall Status: Current' not in sm_status.stdout"
+  rescue:
+    - name: Force re-register if needed
+      ansible.builtin.command: >
+        subscription-manager register --force
+        --username {{ rhsm_username }}
+        --password {{ rhsm_password }}
+        --auto-attach
+
+- name: Pin RHEL release to 8.8
+  ansible.builtin.command: subscription-manager release --set=8.8
+  changed_when: "'Release set to' in stdout"
+
+- name: Enable RHEL repos
+  ansible.builtin.command: >
+    subscription-manager repos
+    --enable=rhel-8-for-x86_64-baseos-rpms
+    --enable=rhel-8-for-x86_64-appstream-rpms
+  changed_when: false
+
+- name: Ensure toolchain + python
+  ansible.builtin.dnf:
+    name:
+      - python3
+      - policycoreutils-python-utils
+      - environment-modules
+    state: present
+
+# RDMA & MPI stack (matching your notes)
+- name: Refresh repos
+  ansible.builtin.command: dnf clean all
+
+- name: Swap rdma libs if mismatched
+  ansible.builtin.dnf:
+    name:
+      - libibverbs
+      - libibverbs-utils
+      - rdma-core
+    state: present
+    allowerasing: true
+
+- name: Install RDMA utilities
+  ansible.builtin.dnf:
+    name:
+      - infiniband-diags
+      - librdmacm-utils
+      - pciutils
+    state: present
+
+- name: Install OpenMPI
+  ansible.builtin.dnf:
+    name:
+      - openmpi
+      - openmpi-devel
+    state: present
+
+- name: Enable module load on login
+  ansible.builtin.lineinfile:
+    path: /home/opc/.bashrc
+    line: "{{ item }}"
+    insertafter: EOF
+  loop:
+    - "source /etc/profile.d/modules.sh"
+    - "module load mpi/openmpi-x86_64"
+  become_user: opc
+

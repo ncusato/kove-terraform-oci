@@ -1,0 +1,80 @@
+variable "tenancy_ocid" {
+  type        = string
+  description = "OCI Tenancy OCID"
+}
+
+variable "user_ocid" {
+  type        = string
+  description = "OCI User OCID"
+}
+
+variable "fingerprint" {
+  type        = string
+  description = "API key fingerprint"
+}
+
+variable "private_key_path" {
+  type        = string
+  description = "Path to the OCI API private key"
+}
+
+variable "region" {
+  type        = string
+  description = "OCI region (e.g. us-ashburn-1)"
+}
+
+variable "compartment_ocid" {
+  type        = string
+  description = "Compartment to host the cluster"
+}
+
+variable "ssh_public_key" {
+  type        = string
+  description = "SSH public key to inject into instances"
+}
+
+variable "bm_node_image_ocid" {
+  type        = string
+  description = "RHEL 8.8 image OCID for BM.Optimized3.36 nodes (also used for head node)"
+}
+
+# -------------------------------------------------------------------
+# Networking control
+# -------------------------------------------------------------------
+
+variable "use_existing_vcn" {
+  type        = bool
+  description = "If true, use existing VCN and subnets; if false, create new networking."
+  default     = false
+}
+
+variable "existing_vcn_id" {
+  type        = string
+  description = "Existing VCN OCID (required if use_existing_vcn = true)"
+  default     = ""
+}
+
+variable "existing_public_subnet_id" {
+  type        = string
+  description = "Existing public subnet OCID for head node"
+  default     = ""
+}
+
+variable "existing_private_subnet_id" {
+  type        = string
+  description = "Existing private subnet OCID for BM nodes"
+  default     = ""
+}
+
+# Simple validation to help catch misconfig
+locals {
+  networking_config_valid = var.use_existing_vcn ? (
+    length(var.existing_vcn_id) > 0 &&
+    length(var.existing_public_subnet_id) > 0 &&
+    length(var.existing_private_subnet_id) > 0
+  ) : true
+}
+
+# Terraform doesn't allow top-level validation on locals directly,
+# but you can add a "fake" resource if you want hard enforcement.
+# For now, we rely on you to set the IDs correctly when use_existing_vcn = true.

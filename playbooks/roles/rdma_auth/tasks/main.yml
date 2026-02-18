@@ -1,0 +1,105 @@
+---
+- name: Install nm-cloud-setup support
+  ansible.builtin.dnf:
+    name:
+      - NetworkManager-config-server
+      - NetworkManager-cloud-setup
+    state: present
+
+- name: Drop-in for nm-cloud-setup (enable OCI + debug)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nm-cloud-setup.service.d/oci.conf
+    content: |
+      [Service]
+      Environment=NM_CLOUD_SETUP_OCI=yes
+      Environment=NM_CLOUD_SETUP_LOG=TRACE
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Reload systemd & enable nm-cloud-setup
+  ansible.builtin.systemd:
+    name: nm-cloud-setup.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# SELinux context noted in your steps
+- name: Set SELinux fcontext for /var/run/oci-cn-auth
+  ansible.builtin.command: semanage fcontext -a -t NetworkManager_etc_t "/var/run/oci-cn-auth(/.*)?"
+  args: { warn: false }
+  changed_when: true
+  failed_when: false
+
+- name: restorecon
+  ansible.builtin.command: restorecon -vFR /var/run/oci-cn-auth
+  changed_when: true
+  failed_when: false
+
+# oci-cn-auth
+- name: Install oci-cn-auth rpm
+  ansible.builtin.dnf:
+    name: "{{ oci_cn_auth_rpm_url }}"
+    state: present
+
+- name: Restart oci-cn-auth service
+  ansible.builtin.systemd:
+    name: oci-cn-auth.service
+    state: restarted
+    enabled: true
+
+- name: First-time RDMA auth
+  ansible.builtin.command: "oci-cn-auth --interface {{ rdma_interface }}"
+  register: auth_out
+  changed_when: "'AUTHENTICATING' in auth_out.stdout or 're-authentication' in auth_out.stdout"
+  failed_when: false
+
+- name: Create re-auth script
+  ansible.builtin.copy:
+    dest: /usr/local/bin/oci-cn-auth-refresh.sh
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      LOGFILE="/var/log/oci-cn-auth-cron.log"
+      DATE=$(date '+%Y-%m-%d %H:%M:%S')
+      echo "[$DATE] Running oci-cn-auth refresh on {{ rdma_interface }}" >> $LOGFILE
+      /usr/bin/oci-cn-auth --interface {{ rdma_interface }} >> $LOGFILE 2>&1
+
+# Use a systemd timer for an exact 1h45m cadence (cron can't do */105 reliably)
+- name: Install systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/oci-cn-auth-refresh.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Re-authenticate OCI RDMA interface
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/oci-cn-auth-refresh.sh
+
+- name: Install systemd timer (every 105 minutes)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/oci-cn-auth-refresh.timer
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Run OCI RDMA re-auth every 105 minutes
+      [Timer]
+      OnBootSec=5min
+      OnUnitActiveSec=105min
+      Persistent=true
+      [Install]
+      WantedBy=timers.target
+
+- name: Enable timer
+  ansible.builtin.systemd:
+    name: oci-cn-auth-refresh.timer
+    enabled: true
+    state: started
+
+- name: Quick RDMA ping check
+  ansible.builtin.command: "ping -I {{ rdma_interface }} -c 3 {{ rdma_ping_target }}"
+  register: ping_out
+  changed_when: false
+  failed_when: false
+
