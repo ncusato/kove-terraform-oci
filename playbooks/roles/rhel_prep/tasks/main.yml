@@ -76,11 +76,11 @@
 
 - name: Enable module load on login
   ansible.builtin.lineinfile:
-    path: /home/opc/.bashrc
+    path: "/home/{{ (cluster_ssh_user | default(ansible_user)) | default('opc') }}/.bashrc"
     line: "{{ item }}"
     insertafter: EOF
   loop:
     - "source /etc/profile.d/modules.sh"
     - "module load mpi/openmpi-x86_64"
-  become_user: opc
+  become_user: "{{ (cluster_ssh_user | default(ansible_user)) | default('opc') }}"
 

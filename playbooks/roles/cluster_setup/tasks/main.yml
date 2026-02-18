@@ -1,0 +1,55 @@
+---
+# Cluster-wide: /etc/hosts and passwordless SSH for all nodes.
+# Uses cluster_ssh_user (or ansible_user) for the SSH key home.
+
+- name: Set cluster SSH user fact
+  ansible.builtin.set_fact:
+    _cluster_user: "{{ cluster_ssh_user | default(ansible_user) | default('opc') }}"
+
+- name: Ensure .ssh directory exists for cluster user
+  ansible.builtin.file:
+    path: "/home/{{ _cluster_user }}/.ssh"
+    state: directory
+    owner: "{{ _cluster_user }}"
+    group: "{{ _cluster_user }}"
+    mode: "0700"
+
+- name: Generate SSH key for cluster user if not present
+  ansible.builtin.command:
+    cmd: ssh-keygen -t rsa -N "" -f /home/{{ _cluster_user }}/.ssh/id_rsa
+    creates: "/home/{{ _cluster_user }}/.ssh/id_rsa"
+  become_user: "{{ _cluster_user }}"
+  changed_when: true
+
+- name: Read SSH public key into fact
+  ansible.builtin.slurp:
+    src: "/home/{{ _cluster_user }}/.ssh/id_rsa.pub"
+  register: _ssh_pubkey_slurp
+  become_user: "{{ _cluster_user }}"
+  delegate_to: "{{ inventory_hostname }}"
+  run_once: false
+
+- name: Set cluster SSH public key fact
+  ansible.builtin.set_fact:
+    cluster_ssh_pubkey: "{{ _ssh_pubkey_slurp.content | b64decode | trim }}"
+
+- name: Build authorized_keys with all cluster nodes' public keys
+  ansible.builtin.set_fact:
+    _authorized_keys_content: "{{ groups['all'] | map('extract', hostvars) | selectattr('cluster_ssh_pubkey', 'defined') | map(attribute='cluster_ssh_pubkey') | join('\n') }}"
+
+- name: Deploy authorized_keys for passwordless SSH
+  ansible.builtin.copy:
+    dest: "/home/{{ _cluster_user }}/.ssh/authorized_keys"
+    content: "{{ _authorized_keys_content }}"
+    owner: "{{ _cluster_user }}"
+    group: "{{ _cluster_user }}"
+    mode: "0600"
+
+- name: Ensure /etc/hosts has entry for each cluster node
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ hostvars[item].ansible_host }} {{ item }}{{ ' headnode' if item == 'head-node' else '' }}"
+    state: present
+    create: true
+  loop: "{{ groups['all'] }}"
+  when: hostvars[item] is defined and hostvars[item].ansible_host is defined

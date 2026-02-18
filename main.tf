@@ -195,15 +195,18 @@ locals {
 rhsm_username: ${jsonencode(var.rhsm_username)}
 rhsm_password: ${jsonencode(var.rhsm_password)}
 rdma_ping_target: ${jsonencode(var.rdma_ping_target)}
+cluster_ssh_user: ${jsonencode(var.instance_ssh_user)}
 EOT
   bootstrap_template_vars = {
-    instance_pool_id = local.instance_pool_id
-    compartment_id   = var.compartment_ocid
-    bm_count         = var.bm_node_count
-    playbook_b64     = base64encode(file("${path.module}/playbooks/configure-rhel-rdma.yml"))
-    rhel_prep_b64    = base64encode(file("${path.module}/playbooks/roles/rhel_prep/tasks/main.yml"))
-    rdma_auth_b64    = base64encode(file("${path.module}/playbooks/roles/rdma_auth/tasks/main.yml"))
-    extra_vars_b64   = base64encode(local.extra_vars_yaml)
+    instance_pool_id   = local.instance_pool_id
+    compartment_id     = var.compartment_ocid
+    bm_count           = var.bm_node_count
+    instance_ssh_user  = var.instance_ssh_user
+    playbook_b64       = base64encode(file("${path.module}/playbooks/configure-rhel-rdma.yml"))
+    rhel_prep_b64      = base64encode(file("${path.module}/playbooks/roles/rhel_prep/tasks/main.yml"))
+    rdma_auth_b64      = base64encode(file("${path.module}/playbooks/roles/rdma_auth/tasks/main.yml"))
+    cluster_setup_b64  = base64encode(file("${path.module}/playbooks/roles/cluster_setup/tasks/main.yml"))
+    extra_vars_b64     = base64encode(local.extra_vars_yaml)
   }
 }
 

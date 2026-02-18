@@ -22,6 +22,7 @@ variableGroups:
   - title: "Ansible from head"
     variables:
       - run_ansible_from_head
+      - instance_ssh_user
       - rhsm_username
       - rhsm_password
       - rdma_ping_target
@@ -105,6 +106,13 @@ variables:
     description: "If true, head node runs RHEL + RDMA Ansible playbook at first boot. Requires head node in a dynamic group with instance principal (see README)."
     default: false
     required: true
+
+  instance_ssh_user:
+    type: string
+    title: "SSH user for instances"
+    description: "Default user on the image (e.g. opc for Oracle Linux, cloud-user for RHEL). Used for Ansible and inventory."
+    default: "cloud-user"
+    required: false
 
   rhsm_username:
     type: string

@@ -112,6 +112,7 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `run_ansible_from_head` | Boolean | false | If true, head node runs the RHEL + RDMA Ansible playbook at first boot via cloud-init |
+| `instance_ssh_user` | String | "cloud-user" | SSH user on the image (use `opc` for Oracle Linux, `cloud-user` for RHEL) |
 | `rhsm_username` | String | "" | RHSM username (required when `run_ansible_from_head = true`) |
 | `rhsm_password` | String | "" | RHSM password (required when `run_ansible_from_head = true`) |
 | `rdma_ping_target` | String | "" | Optional IP for RDMA ping check (e.g. another BM node's RDMA interface) |
@@ -242,7 +243,7 @@ If you set **Run Ansible from head at first boot** to **true** in the stack, the
 
 3. **Apply the stack** with `run_ansible_from_head = true`, `rhsm_username`, and `rhsm_password` set. After the head node boots, check `/var/log/oci-hpc-ansible-bootstrap.log` on the head node for playbook progress.
 
-**Note:** The head node is created after the cluster network so the instance pool exists when the bootstrap script runs. The script waits up to 45 minutes for the instance pool to reach the expected BM count before building the inventory and running Ansible.
+**Note:** The head node is created after the cluster network so the instance pool exists when the bootstrap script runs. The script waits 90 seconds for instance principal and network, then up to 45 minutes for the instance pool to reach the expected BM count, before running Ansible. Check `/var/log/oci-hpc-ansible-bootstrap.log` on the head node for progress. Set **SSH user for instances** to match your image (`cloud-user` for RHEL, `opc` for Oracle Linux) so the inventory and playbook connect correctly. The playbook updates **/etc/hosts** on all nodes and configures **passwordless SSH** between all cluster nodes.
 
 ### Running the RHEL + RDMA Ansible playbook (manual)
 

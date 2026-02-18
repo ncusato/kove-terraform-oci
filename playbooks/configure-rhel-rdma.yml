@@ -10,12 +10,24 @@
 # Or use a vault for secrets:
 #   ansible-playbook -i inventory/hosts.yml configure-rhel-rdma.yml --ask-vault-pass
 
+- name: Cluster setup (hosts file + passwordless SSH)
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    cluster_ssh_user: "{{ cluster_ssh_user | default(ansible_user) | default('opc') }}"
+  tasks:
+    - name: Configure /etc/hosts and passwordless SSH
+      include_role:
+        name: cluster_setup
+
 - name: RHEL and RDMA configuration
   hosts: all
   become: true
   gather_facts: true
   vars:
     bm_prefix: "bm-node-"
+    cluster_ssh_user: "{{ cluster_ssh_user | default(ansible_user) | default('opc') }}"
   tasks:
     - name: Ensure RHEL nodes are registered and prepared (head + BM)
       include_role:

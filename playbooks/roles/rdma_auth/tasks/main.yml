@@ -48,10 +48,54 @@
     state: restarted
     enabled: true
 
-- name: First-time RDMA auth
+- name: First-time RDMA auth (OCA)
   ansible.builtin.command: "oci-cn-auth --interface {{ rdma_interface }}"
   register: auth_out
   changed_when: "'AUTHENTICATING' in auth_out.stdout or 're-authentication' in auth_out.stdout"
+  failed_when: false
+
+- name: Ensure /var/run/oci-cn-auth directory is accessible
+  ansible.builtin.file:
+    path: /var/run/oci-cn-auth
+    state: directory
+    mode: "0755"
+  when: auth_out is changed or auth_out.rc == 0
+
+- name: Brief pause for oci-cn-auth to write client.p12
+  ansible.builtin.pause:
+    seconds: 5
+  when: auth_out is changed or auth_out.rc == 0
+
+- name: Stat client.p12 (created by oci-cn-auth)
+  ansible.builtin.stat:
+    path: /var/run/oci-cn-auth/client.p12
+  register: client_p12_stat
+  when: auth_out is changed or auth_out.rc == 0
+  failed_when: false
+
+- name: Fix client.p12 permissions so services can read it
+  ansible.builtin.command: chmod 644 /var/run/oci-cn-auth/client.p12
+  when: (auth_out is changed or auth_out.rc == 0) and (client_p12_stat is defined and client_p12_stat.stat.exists)
+  changed_when: true
+  failed_when: false
+
+- name: Set SELinux context on client.p12 so wpa_supplicant can read it
+  ansible.builtin.command: chcon -t cert_t /var/run/oci-cn-auth/client.p12
+  when: (auth_out is changed or auth_out.rc == 0) and ansible_selinux.status != "disabled"
+  changed_when: true
+  failed_when: false
+
+- name: Restart wpa_supplicant for RDMA interface (apply cert / 802.1X)
+  ansible.builtin.systemd:
+    name: "wpa_supplicant-wired@{{ rdma_interface }}.service"
+    state: restarted
+  failed_when: false
+  when: auth_out is changed or auth_out.rc == 0
+
+- name: Re-run oci-cn-auth after wpa_supplicant restart
+  ansible.builtin.command: "oci-cn-auth --interface {{ rdma_interface }}"
+  when: auth_out is changed or auth_out.rc == 0
+  changed_when: false
   failed_when: false
 
 - name: Create re-auth script

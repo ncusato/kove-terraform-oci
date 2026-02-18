@@ -99,3 +99,9 @@ variable "rdma_ping_target" {
   description = "RDMA interface ping target IP (e.g. another BM node's secondary VNIC IP) for playbook when run_ansible_from_head = true."
   default     = ""
 }
+
+variable "instance_ssh_user" {
+  type        = string
+  description = "SSH user for all instances (e.g. opc for Oracle Linux, cloud-user for RHEL). Must match the default user on your image."
+  default     = "cloud-user"
+}
