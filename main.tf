@@ -249,7 +249,7 @@ EOT
 resource "oci_core_instance" "head_node" {
   compartment_id      = var.compartment_ocid
   availability_domain = local.ad_name
-  depends_on          = var.run_ansible_from_head ? [time_sleep.wait_bm_instances] : []
+  depends_on          = [time_sleep.wait_bm_instances]
 
   display_name = "head-node"
   shape        = "VM.Standard.E6.Flex"
