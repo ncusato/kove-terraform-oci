@@ -10,6 +10,21 @@
 # Or use a vault for secrets:
 #   ansible-playbook -i inventory/hosts.yml configure-rhel-rdma.yml --ask-vault-pass
 
+# Update /etc/hosts on the head first (from inventory only) so bm-node-* resolve before we SSH.
+- name: Populate /etc/hosts on head from inventory
+  hosts: head
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Ensure /etc/hosts has entry for each cluster node
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[item].ansible_host }} {{ item }}{{ ' headnode' if item == 'head-node' else '' }}"
+        state: present
+        create: true
+      loop: "{{ groups['all'] }}"
+      when: hostvars[item] is defined and hostvars[item].ansible_host is defined
+
 - name: Cluster setup (hosts file + passwordless SSH)
   hosts: all
   become: true

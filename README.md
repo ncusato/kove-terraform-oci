@@ -113,6 +113,7 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `run_ansible_from_head` | Boolean | false | If true, head node runs the RHEL + RDMA Ansible playbook at first boot via cloud-init |
+| `ssh_private_key` | String | "" | *(Optional)* Private key matching `ssh_public_key`. When set, placed on the head so it can SSH to BM nodes. Required for head-run Ansible unless you run the playbook from your machine. |
 | `instance_ssh_user` | String | "cloud-user" | SSH user on BM nodes (RHEL; typically `cloud-user`) |
 | `head_node_ssh_user` | String | "" | SSH user on head node only (e.g. `opc` for Oracle Linux). If empty, uses `instance_ssh_user`. |
 | `rhsm_username` | String | "" | RHSM username (required when `run_ansible_from_head = true`) |
@@ -129,7 +130,7 @@ When `run_ansible_from_head = true`, the head node must be in an OCI **dynamic g
 
 **One-click deploy:** Use the [Deploy to Oracle Cloud](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip) button at the top of this README.
 
-**To get automatic cluster setup (Ansible at first boot):** In the stack variables, set **"Run Ansible from head at first boot"** to **true**, and (for RHEL BM nodes) set RHSM username/password. If you leave it **false**, the head node will have no bootstrap script, no `/var/log/oci-hpc-ansible-bootstrap.log`, and no cluster entries in `/etc/hosts`—you would configure nodes manually.
+**To get automatic cluster setup (Ansible at first boot):** In the stack variables, set **"Run Ansible from head at first boot"** to **true**; (for RHEL BM nodes) set RHSM username/password; and set **"SSH Private Key (optional)"** to the **private key that matches your SSH Public Key**. The head node needs this key to SSH to BM nodes (BM nodes already have your public key). If you leave the private key empty, Ansible will fail with "Permission denied (publickey)" when connecting to BM nodes—then either add the key and re-apply, or run the playbook from your machine. If you leave **Run Ansible from head** **false**, the head node will have no bootstrap script and no cluster entries in `/etc/hosts`—you would configure nodes manually.
 
 #### 1. Prepare Stack Archive (manual upload)
 
@@ -280,29 +281,48 @@ sudo /opt/oci-hpc-bootstrap.sh
 
 If `/opt/oci-hpc-bootstrap.sh` is missing, the image may not be running cloud-init on user_data (e.g. wrong format or cloud-init not enabled). If the script exists but the log is empty, run it manually as above and watch the log for errors (e.g. OCI CLI auth failure = dynamic group not set).
 
-#### Verify the playbook ran
+#### Post-deploy checklist (head node)
 
-If the playbook ran successfully, you should see **cluster entries in `/etc/hosts`** and **passwordless SSH** between nodes. Run these on the head node:
+SSH to the head node (`ssh opc@<head_node_public_ip>` or `cloud-user@...`) and run through this list. If `/etc/hosts` is not updated, the checklist will show where things stopped.
 
+| # | Check | Command | What you want to see |
+|---|--------|--------|----------------------|
+| 1 | Bootstrap log exists | `ls -la /var/log/oci-hpc-ansible-bootstrap.log` | File exists and has non-zero size |
+| 2 | Bootstrap reached Ansible | `sudo grep -E "Bootstrap: Ansible|Bootstrap: done|\+[0-9]+ BM" /var/log/oci-hpc-ansible-bootstrap.log` | Lines like `Bootstrap: Ansible...`, `Bootstrap: done`, and `+4 BM (TF)` or `+4 BM` |
+| 3 | BM hosts in inventory | `cat /opt/oci-hpc-ansible/inventory/hosts` | `[head]` with `head-node` and `[bm]` with `bm-node-1` … `bm-node-4` (each with `ansible_host=<ip>`) |
+| 4 | `/etc/hosts` has cluster entries | `cat /etc/hosts` | Lines for `head-node`, `headnode`, `bm-node-1` … `bm-node-4` with their IPs (not only localhost and cloud-init hostname) |
+| 5 | Passwordless SSH to a BM node | `ssh -o BatchMode=yes -o ConnectTimeout=5 cloud-user@bm-node-1 hostname` | Prints hostname without password prompt (use `opc@bm-node-1` if BM image is Oracle Linux) |
+| 6 | (Optional) RDMA play ran | `sudo grep -E "RDMA|no hosts matched|skipping" /var/log/oci-hpc-ansible-bootstrap.log` | No “skipping: no hosts matched” for the RDMA play if you want RDMA configured |
+
+**If `/etc/hosts` has no cluster entries:** Check (2) and (3). If (2) shows `Bootstrap: done` but (3) has an empty `[bm]` section, Terraform did not inject BM IPs (or they were null); check the log for `Bootstrap: wait pool` and `+N BM`. If (3) looks correct but (4) does not, the playbook likely failed during gather_facts (e.g. SSH to BM nodes). Re-run it manually (below); the playbook now updates /etc/hosts on the head first so bm-node-* resolve before SSH.
+
+**Re-run the playbook manually (from head node):**
 ```bash
-# 1) Did the bootstrap script ever run Ansible?
-sudo grep -E "running Ansible|Bootstrap: done|have [0-9]+/4 instances" /var/log/oci-hpc-ansible-bootstrap.log
-# If you see "have 0/4 instances" until the end, the script never got BM node IPs (instance principal / dynamic group issue) and never ran the playbook.
+cd /opt/oci-hpc-ansible
+sudo ansible-playbook -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml
+```
+Then check `/etc/hosts` and run step 5 to verify SSH.
 
-# 2) Was the inventory built with BM nodes?
+**"Permission denied (publickey)" when Ansible connects to BM nodes:** The head node does not have the private key that matches the SSH public key on the BM nodes. In the stack variables, set **SSH Private Key (optional)** to that private key (the same key you use to SSH to the head), then **re-apply** the stack (or run the playbook from your machine, which has the key). After a re-apply, the bootstrap will place the key on the head so Ansible can SSH to BM nodes.
+
+**"Host key verification failed" when SSHing to bm-node-1:** Either bm-node-1 is not in `/etc/hosts` yet, or the BM host key is not in `~/.ssh/known_hosts`. Re-run the playbook to populate `/etc/hosts`; then from the head run once: `ssh -o StrictHostKeyChecking=accept-new cloud-user@bm-node-1 hostname` (or `opc@bm-node-1` for Oracle Linux BM).
+
+**See why the playbook didn’t update `/etc/hosts`:** Check for Ansible failures in the log:
+```bash
+sudo grep -E "FAILED|fatal|unreachable|TF BM|\\+[0-9]+ BM" /var/log/oci-hpc-ansible-bootstrap.log
+```
+If you see `+0 BM (TF)` or `+0 BM` and `WARN [bm] empty`, the inventory had no BM hosts (Terraform passed no IPs or OCI CLI returned none). Compare stack output `bm_node_private_ips` with `cat /opt/oci-hpc-ansible/inventory/hosts` to confirm IPs match.
+
+**Quick checks (copy-paste on head):**
+```bash
+# 1–4 in one go
+ls -la /var/log/oci-hpc-ansible-bootstrap.log
+sudo tail -50 /var/log/oci-hpc-ansible-bootstrap.log | grep -E "Bootstrap:|Ansible|BM|done"
 cat /opt/oci-hpc-ansible/inventory/hosts
-# Should list [head] with head-node and [bm] with bm-node-1, bm-node-2, ... If [bm] is empty, OCI CLI couldn't list the instance pool (fix dynamic group).
-
-# 3) After playbook runs: /etc/hosts should have cluster hostnames
 cat /etc/hosts
-# Expect lines like: <head_ip> head-node headnode, <bm1_ip> bm-node-1, etc. If you only see localhost and headnode from cloud-init, the playbook never ran.
-
-# 4) Instance principal working? (from head node; use real OCIDs from stack outputs, no angle brackets)
-oci compute-management instance-pool list-instances --instance-pool-id YOUR_INSTANCE_POOL_OCID --compartment-id YOUR_COMPARTMENT_OCID --all
-# If this fails (e.g. "Authorization failed" or "NotAuthenticated"), add the head node to a dynamic group with policy to read instance pools and VNICs. Without this, the script stays at "have 0/4 instances" and never runs the playbook.
 ```
 
-**Why `/etc/hosts` has no cluster entries:** The playbook (which adds those entries) only runs **after** the bootstrap script sees **4/4 instances** in the pool and builds the inventory. If the head node can't call the OCI API (missing dynamic group), the script stays at "have 0/4 instances" and never runs the playbook. Fix the dynamic group, then run `sudo /opt/oci-hpc-bootstrap.sh` again (or run the playbook manually with a hand-built inventory).
+**Why `/etc/hosts` has no cluster entries:** With **Run Ansible from head** enabled, Terraform injects BM IPs into the bootstrap; the script builds the inventory from that and then runs Ansible. If the inventory at `/opt/oci-hpc-ansible/inventory/hosts` has no `[bm]` hosts, either Terraform had no instances yet (wait was too short) or the script failed before writing the file. If the inventory is correct but `/etc/hosts` is not updated, the playbook failed on the head (e.g. SSH to BM nodes). Re-run the playbook manually (see above) or run `sudo /opt/oci-hpc-bootstrap.sh` again after fixing SSH/connectivity.
 
 **RDMA play skipped ("no hosts matched"):** The RDMA play runs only on the `[bm]` group. If the log shows "skipping: no hosts matched" for that play, the inventory had no BM hosts—usually because OCI `list-vnics` didn’t return private IPs yet. The bootstrap now retries and falls back to the first VNIC’s IP; check the log for "added N BM hosts to inventory". If N is 0, the bootstrap could not get private IPs (e.g. dynamic group needs permission to list VNICs). Fix the dynamic group, then re-apply or re-run the bootstrap. To debug: on the head run `oci compute instance list-vnics --instance-id <id> --compartment-id <id> --all` and confirm the JSON has a data array with private IP fields.
 

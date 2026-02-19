@@ -223,8 +223,8 @@ rhsm_password: ${jsonencode(var.rhsm_password)}
 rdma_ping_target: ${jsonencode(var.rdma_ping_target)}
 cluster_ssh_user: ${jsonencode(var.instance_ssh_user)}
 EOT
-  # BM private IPs from Terraform (comma-separated to stay under 32KB metadata); script builds inventory lines.
-  bm_private_ips_csv = var.run_ansible_from_head ? join(",", [for i in range(var.bm_node_count) : data.oci_core_instance.bm_instances[i].private_ip]) : ""
+  # BM private IPs from Terraform (comma-separated); skip null/empty so script can fall back to OCI CLI if needed.
+  bm_private_ips_csv = var.run_ansible_from_head ? join(",", [for i in range(var.bm_node_count) : try(data.oci_core_instance.bm_instances[i].private_ip, "") if try(data.oci_core_instance.bm_instances[i].private_ip, "") != ""]) : ""
   # One compressed payload + small extra_vars to keep user_data under 32KB. RHSM b64 so script can register before dnf.
   bootstrap_template_vars = var.run_ansible_from_head ? {
     instance_pool_id    = local.instance_pool_id
@@ -239,6 +239,7 @@ EOT
     rhsm_username_b64   = base64encode(var.rhsm_username)
     rhsm_password_b64   = base64encode(var.rhsm_password)
     bm_private_ips_csv  = local.bm_private_ips_csv
+    ssh_private_key_b64 = var.ssh_private_key != "" ? base64encode(var.ssh_private_key) : ""
   } : {}
 }
 

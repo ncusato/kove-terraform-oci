@@ -19,6 +19,7 @@ do_bootstrap() {
   RHSM_USER_B64="${rhsm_username_b64}"
   RHSM_PASS_B64="${rhsm_password_b64}"
   BM_PRIVATE_IPS_CSV="${bm_private_ips_csv}"
+  SSH_PRIVATE_KEY_B64="${ssh_private_key_b64}"
 
   export PATH="/usr/local/bin:/usr/bin:$PATH"
   export OCI_CLI_AUTH=instance_principal
@@ -34,6 +35,19 @@ do_bootstrap() {
     chmod 600 "$_d/config" 2>/dev/null || true
     chown -R "$_u:$_u" "$_d" 2>/dev/null || true
   done
+
+  if [ -n "$SSH_PRIVATE_KEY_B64" ]; then
+    echo "$(date) Bootstrap: SSH key for BM..."
+    for _u in root "$HEAD_SSH_USER"; do
+      [ -z "$_u" ] && continue
+      _sshdir="/home/$_u/.ssh"
+      [ "$_u" = "root" ] && _sshdir="/root/.ssh"
+      mkdir -p "$_sshdir"
+      echo "$SSH_PRIVATE_KEY_B64" | base64 -d > "$_sshdir/id_rsa"
+      chmod 600 "$_sshdir/id_rsa"
+      chown -R "$_u:$_u" "$_sshdir" 2>/dev/null || true
+    done
+  fi
 
   if grep -q "Red Hat" /etc/redhat-release 2>/dev/null && ! grep -qi "Oracle" /etc/redhat-release 2>/dev/null && [ -n "$RHSM_USER_B64" ] && [ -n "$RHSM_PASS_B64" ]; then
     RHSM_USER=$(echo "$RHSM_USER_B64" | base64 -d 2>/dev/null)
