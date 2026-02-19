@@ -126,9 +126,9 @@ variables:
 
   head_node_ssh_user:
     type: string
-    title: "SSH user for head node (optional)"
-    description: "Default user on head node image (e.g. opc for Oracle Linux). If empty, uses SSH user for BM nodes."
-    default: ""
+    title: "SSH user for head node"
+    description: "User on head node (opc for Oracle Linux, cloud-user for RHEL). Default opc matches the default Oracle Linux head image."
+    default: "opc"
     required: false
 
   rhsm_username:

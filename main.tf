@@ -225,7 +225,7 @@ EOT
     compartment_id     = var.compartment_ocid
     bm_count           = var.bm_node_count
     instance_ssh_user  = var.instance_ssh_user
-    head_node_ssh_user = var.head_node_ssh_user != "" ? var.head_node_ssh_user : var.instance_ssh_user
+    head_node_ssh_user = var.head_node_ssh_user != "" ? var.head_node_ssh_user : "opc"
     payload_b64        = filebase64(data.archive_file.playbooks[0].output_path)
     extra_vars_b64     = base64encode(local.extra_vars_yaml)
     rhsm_username_b64  = base64encode(var.rhsm_username)

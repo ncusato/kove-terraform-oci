@@ -114,6 +114,6 @@ variable "instance_ssh_user" {
 
 variable "head_node_ssh_user" {
   type        = string
-  description = "SSH user for the head node only (e.g. opc for Oracle Linux). If empty, uses instance_ssh_user."
-  default     = ""
+  description = "SSH user for the head node only. Default 'opc' matches Oracle Linux (default head image). Set to cloud-user if head is RHEL."
+  default     = "opc"
 }
