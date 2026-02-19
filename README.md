@@ -300,6 +300,10 @@ oci compute-management instance-pool list-instances --instance-pool-id YOUR_INST
 
 **Why `/etc/hosts` has no cluster entries:** The playbook (which adds those entries) only runs **after** the bootstrap script sees **4/4 instances** in the pool and builds the inventory. If the head node can't call the OCI API (missing dynamic group), the script stays at "have 0/4 instances" and never runs the playbook. Fix the dynamic group, then run `sudo /opt/oci-hpc-bootstrap.sh` again (or run the playbook manually with a hand-built inventory).
 
+**RDMA play skipped ("no hosts matched"):** The RDMA play runs only on the `[bm]` group. If the log shows "skipping: no hosts matched" for that play, the inventory had no BM hosts—usually because OCI `list-vnics` didn’t return private IPs yet. The bootstrap now retries and falls back to the first VNIC’s IP; check the log for "added N BM hosts to inventory" and "WARN no private IP". If BM_ADDED is 0, fix instance principal (dynamic group) and/or wait for instances to be fully up, then re-run the bootstrap.
+
+**"environment: line 2: No such file or directory":** This message often comes from the OS or cloud-init (e.g. sourcing `/etc/environment`) and can be ignored; the bootstrap script does not depend on it.
+
 ### Running the RHEL + RDMA Ansible playbook (manual)
 
 Alternatively, after the stack has applied you can run the Ansible playbook yourself from a machine that can SSH to the head node.

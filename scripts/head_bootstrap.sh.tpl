@@ -91,12 +91,27 @@ head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER ansible_connection=l
 
   i=1
   for inst_id in $(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all --query 'data[*].instanceId' --raw-output 2>/dev/null); do
-    PRIV_IP=$(oci compute instance list-vnics --instance-id "$inst_id" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null | jq -r '.data[] | select(."is-primary" == true or .isPrimary == true) | ."private-ip" // .privateIp' 2>/dev/null | head -1)
-    if [ -n "$PRIV_IP" ]; then
+    PRIV_IP=""
+    for _try in 1 2; do
+      RAW=$(oci compute instance list-vnics --instance-id "$inst_id" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null)
+      PRIV_IP=$(echo "$RAW" | jq -r '.data[] | select(."is-primary" == true or .isPrimary == true) | ."private-ip" // .privateIp' 2>/dev/null | head -1)
+      if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
+        PRIV_IP=$(echo "$RAW" | jq -r '.data[0] | ."private-ip" // .privateIp' 2>/dev/null)
+      fi
+      if [ -n "$PRIV_IP" ] && [ "$PRIV_IP" != "null" ]; then
+        break
+      fi
+      [ "$_try" -eq 1 ] && sleep 15
+    done
+    if [ -n "$PRIV_IP" ] && [ "$PRIV_IP" != "null" ]; then
       echo "bm-node-$i ansible_host=$PRIV_IP ansible_user=$SSH_USER" >> "$ANSIBLE_DIR/inventory/hosts"
       i=$((i+1))
+    else
+      echo "$(date) Bootstrap: WARN no private IP for instance $inst_id after retries" >> "$LOG"
     fi
   done
+  BM_ADDED=$((i-1))
+  echo "$(date) Bootstrap: added $BM_ADDED BM hosts to inventory" >> "$LOG"
 
   echo "[all:children]
 head
