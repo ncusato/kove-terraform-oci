@@ -23,15 +23,18 @@ do_bootstrap() {
 
   # Ensure pip-installed binaries (ansible-playbook, oci) are on PATH when script runs non-interactively
   export PATH="/usr/local/bin:/usr/bin:$PATH"
-  # Use instance principal for OCI CLI (no config file; head node must be in a dynamic group with policy)
+  # Instance principal for OCI CLI (head node must be in a dynamic group with policy). Config needs region/tenancy so CLI accepts it.
   export OCI_CLI_AUTH=instance_principal
-  # So manual 'oci' from head node also works, create minimal config for HEAD_SSH_USER
+  export OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True
+  REGION="${region}"
+  TENANCY="${tenancy_ocid}"
   for _u in root "$HEAD_SSH_USER"; do
     [ -z "$_u" ] && continue
     _d="/home/$_u/.oci"
     [ "$_u" = "root" ] && _d="/root/.oci"
     mkdir -p "$_d"
-    printf '[DEFAULT]\nauth=instance_principal\n' > "$_d/config"
+    printf '[DEFAULT]\nauth=instance_principal\nregion=%s\ntenancy=%s\n' "$REGION" "$TENANCY" > "$_d/config"
+    chmod 600 "$_d/config" 2>/dev/null || true
     chown -R "$_u:$_u" "$_d" 2>/dev/null || true
   done
 
@@ -40,7 +43,7 @@ do_bootstrap() {
     RHSM_USER=$(echo "$RHSM_USER_B64" | base64 -d 2>/dev/null)
     RHSM_PASS=$(echo "$RHSM_PASS_B64" | base64 -d 2>/dev/null)
     if [ -n "$RHSM_USER" ] && [ -n "$RHSM_PASS" ]; then
-      echo "$(date) Bootstrap: registering head node (RHEL) with RHSM..."
+      echo "$(date) Bootstrap: registering with RHSM..."
       subscription-manager register --username "$RHSM_USER" --password "$RHSM_PASS" --auto-attach --force 2>/dev/null || true
       subscription-manager release --set=8.8 2>/dev/null || true
       subscription-manager repos --enable=rhel-8-for-x86_64-baseos-rpms --enable=rhel-8-for-x86_64-appstream-rpms 2>/dev/null || true
@@ -93,10 +96,14 @@ head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER ansible_connection=l
   for inst_id in $(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all --query 'data[*].instanceId' --raw-output 2>/dev/null); do
     PRIV_IP=""
     for _try in 1 2; do
-      RAW=$(oci compute instance list-vnics --instance-id "$inst_id" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null)
-      PRIV_IP=$(echo "$RAW" | jq -r '.data[] | select(."is-primary" == true or .isPrimary == true) | ."private-ip" // .privateIp' 2>/dev/null | head -1)
+      RAW=$(oci compute instance list-vnics --instance-id "$inst_id" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null) || true
+      # Prefer primary VNIC IP; fall back to first VNIC; support both camelCase and kebab-case keys
+      PRIV_IP=$(echo "$RAW" | jq -r '.data[]? | select(."is-primary" == true or .isPrimary == true) | .privateIp // ."private-ip" // empty' 2>/dev/null | head -1)
       if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
-        PRIV_IP=$(echo "$RAW" | jq -r '.data[0] | ."private-ip" // .privateIp' 2>/dev/null)
+        PRIV_IP=$(echo "$RAW" | jq -r '.data[0]? | .privateIp // ."private-ip" // .vnic.privateIp // .vnic."private-ip" // empty' 2>/dev/null)
+      fi
+      if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
+        PRIV_IP=$(echo "$RAW" | jq -r '.data[]? | .privateIp // ."private-ip" // .vnic.privateIp // .vnic."private-ip" // empty | select(. != null and . != "")' 2>/dev/null | head -1)
       fi
       if [ -n "$PRIV_IP" ] && [ "$PRIV_IP" != "null" ]; then
         break
@@ -107,7 +114,7 @@ head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER ansible_connection=l
       echo "bm-node-$i ansible_host=$PRIV_IP ansible_user=$SSH_USER" >> "$ANSIBLE_DIR/inventory/hosts"
       i=$((i+1))
     else
-      echo "$(date) Bootstrap: WARN no private IP for instance $inst_id after retries" >> "$LOG"
+      echo "$(date) Bootstrap: WARN no private IP for instance $inst_id (list-vnics empty or wrong format?)" >> "$LOG"
     fi
   done
   BM_ADDED=$((i-1))

@@ -127,7 +127,9 @@ When `run_ansible_from_head = true`, the head node must be in an OCI **dynamic g
 
 ### Option 1: Deploy via OCI Resource Manager (Recommended)
 
-**One-click deploy:** Use the [Deploy to Oracle Cloud](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip) button at the top of this README. It opens OCI Resource Manager with this repository’s source (GitHub archive of the `master` branch). If your default branch is `main`, change the button link to use `main.zip` instead of `master.zip`.
+**One-click deploy:** Use the [Deploy to Oracle Cloud](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip) button at the top of this README.
+
+**To get automatic cluster setup (Ansible at first boot):** In the stack variables, set **"Run Ansible from head at first boot"** to **true**, and (for RHEL BM nodes) set RHSM username/password. If you leave it **false**, the head node will have no bootstrap script, no `/var/log/oci-hpc-ansible-bootstrap.log`, and no cluster entries in `/etc/hosts`—you would configure nodes manually. It opens OCI Resource Manager with this repository’s source (GitHub archive of the `master` branch). If your default branch is `main`, change the button link to use `main.zip` instead of `master.zip`.
 
 #### 1. Prepare Stack Archive (manual upload)
 
@@ -224,7 +226,7 @@ After deployment, Terraform provides:
 
 If you set **Run Ansible from head at first boot** to **true** in the stack, the head node runs the RHEL + RDMA playbook automatically at first boot. It uses **instance principal** to discover BM node private IPs from the instance pool (no API keys on the instance).
 
-**Requirement:** Put the head node in a **dynamic group** and grant that group permission so the OCI CLI can use **instance principal** (no config file). The bootstrap script sets `OCI_CLI_AUTH=instance_principal` and creates `~/.oci/config` with `auth=instance_principal` so `oci` commands work automatically. You must create the dynamic group and policies **before** (or right after) the stack runs, then re-run the bootstrap if it had already failed.
+**Requirement:** Put the head node in a **dynamic group** and grant that group permission so the OCI CLI can use **instance principal**. The bootstrap script sets `OCI_CLI_AUTH=instance_principal` and writes `~/.oci/config` with `auth=instance_principal`, `region`, and `tenancy` so `oci` commands work from the head (including manual runs). You must create the dynamic group and policies **before** (or right after) the stack runs, then re-run the bootstrap if it had already failed.
 
 1. **Create a dynamic group** (same idea as [oci-hpc](https://github.com/oracle-quickstart/oci-hpc)):  
    - **Name**: e.g. `instance_principal` or `hpc-head-instances`  
@@ -254,12 +256,14 @@ If you set **Run Ansible from head at first boot** to **true** in the stack, the
 
 #### Bootstrap didn't run – diagnose on the head node
 
-SSH to the head node (`ssh cloud-user@<head_node_public_ip>` or `opc@...`), then run:
+**No bootstrap log at all?** If `/var/log/oci-hpc-ansible-bootstrap.log` and `/opt/oci-hpc-bootstrap.sh` don't exist, the stack was applied with **"Run Ansible from head at first boot" = false** (the default). Enable it in the stack variables and **re-apply** (or destroy and create a new stack with it enabled). The bootstrap script is only injected into the head node when this option is true.
+
+SSH to the head node (`ssh opc@<head_node_public_ip>` or `cloud-user@...`), then run:
 
 ```bash
 # 1) Did cloud-init run and write the script?
 ls -la /opt/oci-hpc-bootstrap.sh
-# If missing, user_data wasn't applied or cloud-init didn't run write_files.
+# If missing, user_data wasn't applied (run_ansible_from_head was false) or cloud-init didn't run write_files.
 
 # 2) Cloud-init logs (look for runcmd, write_files, errors)
 sudo tail -100 /var/log/cloud-init-output.log
@@ -300,9 +304,9 @@ oci compute-management instance-pool list-instances --instance-pool-id YOUR_INST
 
 **Why `/etc/hosts` has no cluster entries:** The playbook (which adds those entries) only runs **after** the bootstrap script sees **4/4 instances** in the pool and builds the inventory. If the head node can't call the OCI API (missing dynamic group), the script stays at "have 0/4 instances" and never runs the playbook. Fix the dynamic group, then run `sudo /opt/oci-hpc-bootstrap.sh` again (or run the playbook manually with a hand-built inventory).
 
-**RDMA play skipped ("no hosts matched"):** The RDMA play runs only on the `[bm]` group. If the log shows "skipping: no hosts matched" for that play, the inventory had no BM hosts—usually because OCI `list-vnics` didn’t return private IPs yet. The bootstrap now retries and falls back to the first VNIC’s IP; check the log for "added N BM hosts to inventory" and "WARN no private IP". If BM_ADDED is 0, fix instance principal (dynamic group) and/or wait for instances to be fully up, then re-run the bootstrap.
+**RDMA play skipped ("no hosts matched"):** The RDMA play runs only on the `[bm]` group. If the log shows "skipping: no hosts matched" for that play, the inventory had no BM hosts—usually because OCI `list-vnics` didn’t return private IPs yet. The bootstrap now retries and falls back to the first VNIC’s IP; check the log for "added N BM hosts to inventory". If N is 0, the bootstrap could not get private IPs (e.g. dynamic group needs permission to list VNICs). Fix the dynamic group, then re-apply or re-run the bootstrap. To debug: on the head run `oci compute instance list-vnics --instance-id <id> --compartment-id <id> --all` and confirm the JSON has a data array with private IP fields.
 
-**"environment: line 2: No such file or directory":** This message often comes from the OS or cloud-init (e.g. sourcing `/etc/environment`) and can be ignored; the bootstrap script does not depend on it.
+**"environment: line N: No such file or directory":** These messages often come from the OS or OCI CLI environment (e.g. sourcing `/etc/environment`) and can be ignored; the bootstrap does not depend on them.
 
 ### Running the RHEL + RDMA Ansible playbook (manual)
 

@@ -223,6 +223,8 @@ EOT
   bootstrap_template_vars = var.run_ansible_from_head ? {
     instance_pool_id   = local.instance_pool_id
     compartment_id     = var.compartment_ocid
+    region             = var.region
+    tenancy_ocid       = var.tenancy_ocid
     bm_count           = var.bm_node_count
     instance_ssh_user  = var.instance_ssh_user
     head_node_ssh_user = var.head_node_ssh_user != "" ? var.head_node_ssh_user : "opc"
