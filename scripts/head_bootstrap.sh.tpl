@@ -20,7 +20,7 @@ do_bootstrap() {
   EXTRA_VARS_B64="${extra_vars_b64}"
   RHSM_USER_B64="${rhsm_username_b64}"
   RHSM_PASS_B64="${rhsm_password_b64}"
-  BM_INVENTORY_LINES="${bm_inventory_lines}"
+  BM_PRIVATE_IPS_CSV="${bm_private_ips_csv}"
 
   # Ensure pip-installed binaries (ansible-playbook, oci) are on PATH when script runs non-interactively
   export PATH="/usr/local/bin:/usr/bin:$PATH"
@@ -73,7 +73,7 @@ do_bootstrap() {
   rm -f /tmp/playbooks.zip
   echo "$EXTRA_VARS_B64" | base64 -d > "$ANSIBLE_DIR/extra_vars.yml"
 
-  if [ -z "$BM_INVENTORY_LINES" ]; then
+  if [ -z "$BM_PRIVATE_IPS_CSV" ]; then
     echo "$(date) Bootstrap: waiting for instance pool to have $BM_COUNT instances (timeout 45 min)..."
     for i in $(seq 1 90); do
       N=$(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null | jq -r '.data | length' 2>/dev/null || echo "0")
@@ -86,7 +86,7 @@ do_bootstrap() {
       sleep 30
     done
   else
-    echo "$(date) Bootstrap: using Terraform-injected BM inventory (skipping instance pool wait)."
+    echo "$(date) Bootstrap: using Terraform-injected BM IPs (skipping instance pool wait)."
   fi
 
   echo "$(date) Bootstrap: getting private IPs..."
@@ -97,10 +97,16 @@ head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER ansible_connection=l
 
 [bm]" > "$ANSIBLE_DIR/inventory/hosts"
 
-  # Use Terraform-injected BM inventory lines when present (like oci-hpc; no OCI CLI list-vnics needed)
-  if [ -n "$BM_INVENTORY_LINES" ]; then
-    echo "$BM_INVENTORY_LINES" >> "$ANSIBLE_DIR/inventory/hosts"
-    BM_ADDED=$(echo "$BM_INVENTORY_LINES" | grep -c . || true)
+  # Use Terraform-injected BM IPs when present (comma-separated); build inventory lines to stay under 32KB metadata.
+  if [ -n "$BM_PRIVATE_IPS_CSV" ]; then
+    i=1
+    for _ip in $(echo "$BM_PRIVATE_IPS_CSV" | tr ',' ' '); do
+      _ip=$(echo "$_ip" | tr -d ' ')
+      [ -z "$_ip" ] && continue
+      echo "bm-node-$i ansible_host=$_ip ansible_user=$SSH_USER" >> "$ANSIBLE_DIR/inventory/hosts"
+      i=$((i+1))
+    done
+    BM_ADDED=$((i-1))
     echo "$(date) Bootstrap: added $BM_ADDED BM hosts to inventory (from Terraform)" >> "$LOG"
   else
     i=1
