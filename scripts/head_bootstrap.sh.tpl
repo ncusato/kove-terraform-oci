@@ -20,6 +20,7 @@ do_bootstrap() {
   EXTRA_VARS_B64="${extra_vars_b64}"
   RHSM_USER_B64="${rhsm_username_b64}"
   RHSM_PASS_B64="${rhsm_password_b64}"
+  BM_INVENTORY_LINES="${bm_inventory_lines}"
 
   # Ensure pip-installed binaries (ansible-playbook, oci) are on PATH when script runs non-interactively
   export PATH="/usr/local/bin:/usr/bin:$PATH"
@@ -72,17 +73,21 @@ do_bootstrap() {
   rm -f /tmp/playbooks.zip
   echo "$EXTRA_VARS_B64" | base64 -d > "$ANSIBLE_DIR/extra_vars.yml"
 
-  echo "$(date) Bootstrap: waiting for instance pool to have $BM_COUNT instances (timeout 45 min)..."
-  for i in $(seq 1 90); do
-    N=$(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null | jq -r '.data | length' 2>/dev/null || echo "0")
-    N=$${N:-0}
-    if [ "$${N}" -eq "$BM_COUNT" ] 2>/dev/null; then
-      echo "$(date) Bootstrap: found $BM_COUNT instances."
-      break
-    fi
-    echo "$(date) Bootstrap: have $${N}/$BM_COUNT instances, waiting..."
-    sleep 30
-  done
+  if [ -z "$BM_INVENTORY_LINES" ]; then
+    echo "$(date) Bootstrap: waiting for instance pool to have $BM_COUNT instances (timeout 45 min)..."
+    for i in $(seq 1 90); do
+      N=$(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null | jq -r '.data | length' 2>/dev/null || echo "0")
+      N=$${N:-0}
+      if [ "$${N}" -eq "$BM_COUNT" ] 2>/dev/null; then
+        echo "$(date) Bootstrap: found $BM_COUNT instances."
+        break
+      fi
+      echo "$(date) Bootstrap: have $${N}/$BM_COUNT instances, waiting..."
+      sleep 30
+    done
+  else
+    echo "$(date) Bootstrap: using Terraform-injected BM inventory (skipping instance pool wait)."
+  fi
 
   echo "$(date) Bootstrap: getting private IPs..."
   mkdir -p "$ANSIBLE_DIR/inventory"
@@ -92,33 +97,45 @@ head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER ansible_connection=l
 
 [bm]" > "$ANSIBLE_DIR/inventory/hosts"
 
-  i=1
-  for inst_id in $(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all --query 'data[*].instanceId' --raw-output 2>/dev/null); do
-    PRIV_IP=""
-    for _try in 1 2; do
-      RAW=$(oci compute instance list-vnics --instance-id "$inst_id" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null) || true
-      # Prefer primary VNIC IP; fall back to first VNIC; support both camelCase and kebab-case keys
-      PRIV_IP=$(echo "$RAW" | jq -r '.data[]? | select(."is-primary" == true or .isPrimary == true) | .privateIp // ."private-ip" // empty' 2>/dev/null | head -1)
-      if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
-        PRIV_IP=$(echo "$RAW" | jq -r '.data[0]? | .privateIp // ."private-ip" // .vnic.privateIp // .vnic."private-ip" // empty' 2>/dev/null)
-      fi
-      if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
-        PRIV_IP=$(echo "$RAW" | jq -r '.data[]? | .privateIp // ."private-ip" // .vnic.privateIp // .vnic."private-ip" // empty | select(. != null and . != "")' 2>/dev/null | head -1)
-      fi
+  # Use Terraform-injected BM inventory lines when present (like oci-hpc; no OCI CLI list-vnics needed)
+  if [ -n "$BM_INVENTORY_LINES" ]; then
+    echo "$BM_INVENTORY_LINES" >> "$ANSIBLE_DIR/inventory/hosts"
+    BM_ADDED=$(echo "$BM_INVENTORY_LINES" | grep -c . || true)
+    echo "$(date) Bootstrap: added $BM_ADDED BM hosts to inventory (from Terraform)" >> "$LOG"
+  else
+    i=1
+    for inst_id in $(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all --query 'data[*].instanceId' --raw-output 2>/dev/null); do
+      PRIV_IP=""
+      for _try in 1 2; do
+        RAW=$(oci compute instance list-vnics --instance-id "$inst_id" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null) || true
+        PRIV_IP=$(echo "$RAW" | jq -r '.data[]? | select(."is-primary" == true or .isPrimary == true) | .privateIp // ."private-ip" // empty' 2>/dev/null | head -1)
+        if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
+          PRIV_IP=$(echo "$RAW" | jq -r '.data[0]? | .privateIp // ."private-ip" // .vnic.privateIp // .vnic."private-ip" // empty' 2>/dev/null)
+        fi
+        if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
+          PRIV_IP=$(echo "$RAW" | jq -r '.data[]? | .privateIp // ."private-ip" // .vnic.privateIp // .vnic."private-ip" // empty | select(. != null and . != "")' 2>/dev/null | head -1)
+        fi
+        if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
+          PRIV_IP=$(echo "$RAW" | jq -r '[.. | strings | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"))] | first // empty' 2>/dev/null)
+        fi
+        if [ -n "$PRIV_IP" ] && [ "$PRIV_IP" != "null" ]; then
+          break
+        fi
+        [ "$_try" -eq 1 ] && sleep 15
+      done
       if [ -n "$PRIV_IP" ] && [ "$PRIV_IP" != "null" ]; then
-        break
+        echo "bm-node-$i ansible_host=$PRIV_IP ansible_user=$SSH_USER" >> "$ANSIBLE_DIR/inventory/hosts"
+        i=$((i+1))
+      else
+        echo "$(date) Bootstrap: WARN no private IP for instance $inst_id" >> "$LOG"
       fi
-      [ "$_try" -eq 1 ] && sleep 15
     done
-    if [ -n "$PRIV_IP" ] && [ "$PRIV_IP" != "null" ]; then
-      echo "bm-node-$i ansible_host=$PRIV_IP ansible_user=$SSH_USER" >> "$ANSIBLE_DIR/inventory/hosts"
-      i=$((i+1))
-    else
-      echo "$(date) Bootstrap: WARN no private IP for instance $inst_id (list-vnics empty or wrong format?)" >> "$LOG"
+    BM_ADDED=$((i-1))
+    echo "$(date) Bootstrap: added $BM_ADDED BM hosts to inventory (from OCI CLI)" >> "$LOG"
+    if [ "$BM_ADDED" -eq 0 ]; then
+      echo "$(date) Bootstrap: WARN [bm] group is empty; RDMA play will be skipped." >> "$LOG"
     fi
-  done
-  BM_ADDED=$((i-1))
-  echo "$(date) Bootstrap: added $BM_ADDED BM hosts to inventory" >> "$LOG"
+  fi
 
   echo "[all:children]
 head

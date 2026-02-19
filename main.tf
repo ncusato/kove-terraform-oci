@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/archive"
       version = "~> 2.4"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.9"
+    }
   }
 }
 
@@ -219,19 +223,22 @@ rhsm_password: ${jsonencode(var.rhsm_password)}
 rdma_ping_target: ${jsonencode(var.rdma_ping_target)}
 cluster_ssh_user: ${jsonencode(var.instance_ssh_user)}
 EOT
+  # BM inventory lines from Terraform data sources (like oci-hpc) so we don't rely on list-vnics on the head.
+  bm_inventory_lines = var.run_ansible_from_head ? join("\n", [for i in range(var.bm_node_count) : "bm-node-${i + 1} ansible_host=${data.oci_core_instance.bm_instances[i].private_ip} ansible_user=${var.instance_ssh_user}"]) : ""
   # One compressed payload + small extra_vars to keep user_data under 32KB. RHSM b64 so script can register before dnf.
   bootstrap_template_vars = var.run_ansible_from_head ? {
-    instance_pool_id   = local.instance_pool_id
-    compartment_id     = var.compartment_ocid
-    region             = var.region
-    tenancy_ocid       = var.tenancy_ocid
-    bm_count           = var.bm_node_count
-    instance_ssh_user  = var.instance_ssh_user
-    head_node_ssh_user = var.head_node_ssh_user != "" ? var.head_node_ssh_user : "opc"
-    payload_b64        = filebase64(data.archive_file.playbooks[0].output_path)
-    extra_vars_b64     = base64encode(local.extra_vars_yaml)
-    rhsm_username_b64  = base64encode(var.rhsm_username)
-    rhsm_password_b64  = base64encode(var.rhsm_password)
+    instance_pool_id    = local.instance_pool_id
+    compartment_id      = var.compartment_ocid
+    region              = var.region
+    tenancy_ocid        = var.tenancy_ocid
+    bm_count            = var.bm_node_count
+    instance_ssh_user   = var.instance_ssh_user
+    head_node_ssh_user  = var.head_node_ssh_user != "" ? var.head_node_ssh_user : "opc"
+    payload_b64         = filebase64(data.archive_file.playbooks[0].output_path)
+    extra_vars_b64      = base64encode(local.extra_vars_yaml)
+    rhsm_username_b64   = base64encode(var.rhsm_username)
+    rhsm_password_b64   = base64encode(var.rhsm_password)
+    bm_inventory_lines  = local.bm_inventory_lines
   } : {}
 }
 
@@ -240,8 +247,9 @@ EOT
 # -------------------------------------------------------------------
 
 resource "oci_core_instance" "head_node" {
-  compartment_id = var.compartment_ocid
+  compartment_id      = var.compartment_ocid
   availability_domain = local.ad_name
+  depends_on          = var.run_ansible_from_head ? [time_sleep.wait_bm_instances] : []
 
   display_name = "head-node"
   shape        = "VM.Standard.E6.Flex"
@@ -331,8 +339,26 @@ resource "oci_core_cluster_network" "bm_cluster" {
   }
 }
 
-# BM private IPs are not available as Terraform outputs in a single apply because
-# the instance pool instances list is only known after apply. Use the head node
-# bootstrap inventory (/opt/oci-hpc-ansible/inventory/hosts when run_ansible_from_head
-# is true) or run: oci compute-management instance-pool list-instances --instance-pool-id <id>
-# then oci compute instance list-vnics --instance-id <id> for each instance.
+# -------------------------------------------------------------------
+# BM instance private IPs via Terraform (like oci-hpc) when run_ansible_from_head
+# -------------------------------------------------------------------
+# Wait for instance pool to have instances, then read IPs via data sources so we
+# inject them into the bootstrap script (no OCI CLI list-vnics on the head).
+resource "time_sleep" "wait_bm_instances" {
+  create_duration = var.run_ansible_from_head ? "8m" : "0s"
+  depends_on      = [oci_core_cluster_network.bm_cluster]
+}
+
+data "oci_core_cluster_network_instances" "bm" {
+  count = var.run_ansible_from_head ? 1 : 0
+
+  cluster_network_id = oci_core_cluster_network.bm_cluster.id
+  compartment_id     = var.compartment_ocid
+  depends_on         = [time_sleep.wait_bm_instances]
+}
+
+data "oci_core_instance" "bm_instances" {
+  count = var.run_ansible_from_head ? var.bm_node_count : 0
+
+  instance_id = data.oci_core_cluster_network_instances.bm[0].instances[count.index]["id"]
+}

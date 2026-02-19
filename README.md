@@ -129,7 +129,7 @@ When `run_ansible_from_head = true`, the head node must be in an OCI **dynamic g
 
 **One-click deploy:** Use the [Deploy to Oracle Cloud](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip) button at the top of this README.
 
-**To get automatic cluster setup (Ansible at first boot):** In the stack variables, set **"Run Ansible from head at first boot"** to **true**, and (for RHEL BM nodes) set RHSM username/password. If you leave it **false**, the head node will have no bootstrap script, no `/var/log/oci-hpc-ansible-bootstrap.log`, and no cluster entries in `/etc/hosts`—you would configure nodes manually. It opens OCI Resource Manager with this repository’s source (GitHub archive of the `master` branch). If your default branch is `main`, change the button link to use `main.zip` instead of `master.zip`.
+**To get automatic cluster setup (Ansible at first boot):** In the stack variables, set **"Run Ansible from head at first boot"** to **true**, and (for RHEL BM nodes) set RHSM username/password. If you leave it **false**, the head node will have no bootstrap script, no `/var/log/oci-hpc-ansible-bootstrap.log`, and no cluster entries in `/etc/hosts`—you would configure nodes manually.
 
 #### 1. Prepare Stack Archive (manual upload)
 
@@ -250,7 +250,7 @@ If you set **Run Ansible from head at first boot** to **true** in the stack, the
 
 3. **Apply the stack** with `run_ansible_from_head = true`, `rhsm_username`, and `rhsm_password` set. After the head node boots, check `/var/log/oci-hpc-ansible-bootstrap.log` on the head node for playbook progress.
 
-**Note:** The head node is created after the cluster network so the instance pool exists when the bootstrap script runs. user_data is delivered as a **cloud-init cloud-config** (write script to `/opt/oci-hpc-bootstrap.sh` + runcmd) so it runs reliably on RHEL; the script then waits 90 seconds for instance principal and network, then up to 45 minutes for the instance pool, before running Ansible. Check **`/var/log/oci-hpc-ansible-bootstrap.log`** on the head node for progress. Set **SSH user for instances** to match your image (`cloud-user` for RHEL, `opc` for Oracle Linux). The playbook updates **/etc/hosts** and **passwordless SSH** on all nodes.
+**Note:** Like [oci-hpc](https://github.com/oracle-quickstart/oci-hpc), BM node private IPs are obtained via **Terraform data sources** at apply time (`oci_core_cluster_network_instances` + `oci_core_instance`). Terraform waits 8 minutes for the instance pool to have instances, then injects the IPs into the bootstrap script so the head node does not need to call `oci compute instance list-vnics`. The head node is created after that wait. user_data is delivered as **cloud-init cloud-config** (write script + runcmd); the script then runs Ansible with the pre-built inventory. Check **`/var/log/oci-hpc-ansible-bootstrap.log`** on the head node for progress. Set **SSH user for instances** to match your image (`cloud-user` for RHEL, `opc` for Oracle Linux). The playbook updates **/etc/hosts** and **passwordless SSH** on all nodes.
 
 **Terraform never runs Ansible** – it only creates the instance with user_data. The bootstrap runs **inside the VM at first boot** via cloud-init. So "Apply complete" in Terraform just means the instance was created; configuration happens asynchronously on the node.
 
