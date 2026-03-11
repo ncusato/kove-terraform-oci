@@ -330,6 +330,8 @@ cat /etc/hosts
 
 **"environment: line N: No such file or directory":** These messages often come from the OS or OCI CLI environment (e.g. sourcing `/etc/environment`) and can be ignored; the bootstrap does not depend on them.
 
+**"timeout while waiting for state to become 'RUNNING'" on `oci_core_cluster_network.bm_cluster`:** The BM cluster network stayed in **PROVISIONING** longer than the Terraform timeout (now 45 minutes). Bare metal capacity can take 20–45+ minutes in some regions. The stack has been updated so the cluster network resource uses a 45m create timeout. If the apply failed with this error: (1) **Nothing after the cluster network was created**—no head node, no BM instances yet (the head node is created only after the cluster network reaches RUNNING and then a 5m wait). (2) **Check in OCI Console:** Go to **Compute → Cluster networks** in your compartment and find the cluster network (e.g. `bm-rdma-cluster`). Check its **State** (PROVISIONING, RUNNING, or TERMINATED). If it is still PROVISIONING, you can **re-run the Terraform apply** (same stack) and it will resume waiting; with the new 45m timeout it may succeed. If the cluster network reached RUNNING after the apply failed, run apply again and Terraform will create the head node and continue.
+
 ### Running the RHEL + RDMA Ansible playbook (manual)
 
 Alternatively, after the stack has applied you can run the Ansible playbook yourself from a machine that can SSH to the head node.

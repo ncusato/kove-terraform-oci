@@ -352,6 +352,13 @@ resource "oci_core_cluster_network" "bm_cluster" {
     }
     # OCI API expects 0 secondary_vnic_subnets; RDMA/secondary VNIC is managed by the platform for cluster networks.
   }
+
+  # BM cluster networks can take 20–45+ min to reach RUNNING when capacity is tight; default provider timeout is 20m.
+  timeouts {
+    create = "45m"
+    update = "30m"
+    delete = "30m"
+  }
 }
 
 # -------------------------------------------------------------------
