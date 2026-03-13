@@ -42,6 +42,12 @@ variable "bm_node_count" {
   default     = 4
 }
 
+variable "cluster_network_create_timeout" {
+  type        = string
+  description = "Max time to wait for the BM cluster network to reach RUNNING (e.g. 90m, 2h). Bare metal capacity can take 45–90+ minutes."
+  default     = "90m"
+}
+
 # -------------------------------------------------------------------
 # Networking control
 # -------------------------------------------------------------------

@@ -19,6 +19,7 @@ variableGroups:
       - existing_vcn_id
       - existing_public_subnet_id
       - existing_private_subnet_id
+      - cluster_network_create_timeout
 
   - title: "Ansible from head"
     variables:
@@ -116,6 +117,13 @@ variables:
     dependsOn:
       compartmentId: ${compartment_ocid}
       vcnId: ${existing_vcn_id}
+
+  cluster_network_create_timeout:
+    type: string
+    title: "Cluster network create timeout"
+    description: "Max wait for BM cluster network to reach RUNNING (e.g. 90m, 2h). Increase if provisioning times out; BM capacity can take 45–90+ min."
+    default: "90m"
+    required: false
 
   run_ansible_from_head:
     type: boolean
