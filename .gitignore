@@ -8,6 +8,8 @@ terraform.tfvars
 terraform.tfvars.json
 *.local.tfvars
 secrets.auto.tfvars
+# Var-files saved as .txt (e.g. Downloads copies) — ignore if placed in repo
+*.tfvars.txt
 # Packed playbooks (generated when run_ansible_from_head = true)
 playbooks.zip
 .terraform/playbooks.zip
