@@ -9,8 +9,8 @@ output "head_node_public_ip" {
 }
 
 output "bm_node_private_ips" {
-  description = "Private IPs of BM cluster network nodes (primary VNIC). Not available in Terraform (instance pool instances are known only after apply). Use head node inventory /opt/oci-hpc-ansible/inventory/hosts when run_ansible_from_head is true, or OCI CLI: instance-pool list-instances then instance list-vnics per instance."
-  value       = []
+  description = "Private IPs of BM nodes (primary VNIC) when Run Ansible from head is true (from instance pool + instance data sources). Otherwise empty; use Console or OCI CLI."
+  value       = var.run_ansible_from_head ? [for inst in data.oci_core_instance.bm_instances : inst.private_ip] : []
 }
 
 output "cluster_network_id" {

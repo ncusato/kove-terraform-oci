@@ -136,8 +136,8 @@ variables:
   bm_pool_ready_wait:
     type: string
     title: "Wait after cluster network (Ansible)"
-    description: "Delay after BM cluster network is RUNNING before reading BM IPs (e.g. 5m, 8m). Increase if inventory has empty [bm]."
-    default: "5m"
+    description: "Delay after BM cluster network is RUNNING before reading BM IPs from the instance pool (e.g. 10m, 15m). Increase if apply fails on BM instances or inventory has empty [bm]."
+    default: "10m"
     required: false
 
   instance_ssh_user:

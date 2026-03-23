@@ -373,25 +373,27 @@ resource "oci_core_cluster_network" "bm_cluster" {
 }
 
 # -------------------------------------------------------------------
-# BM instance private IPs via Terraform (like oci-hpc) when run_ansible_from_head
+# BM instance private IPs via Terraform when run_ansible_from_head
 # -------------------------------------------------------------------
-# Wait for instance pool to have instances, then read IPs via data sources so we
-# inject them into the bootstrap script (no OCI CLI list-vnics on the head).
+# oci-hpc lists cluster nodes via either oci_core_cluster_network_instances OR
+# oci_core_instance_pool_instances. A cluster network embeds an instance pool; in
+# practice list_cluster_network_instances can return [] while list_instance_pool_instances
+# already returns members — use the instance pool ID (oracle-quickstart/oci-hpc pattern).
 resource "time_sleep" "wait_bm_instances" {
   create_duration = var.run_ansible_from_head ? var.bm_pool_ready_wait : "0s"
   depends_on      = [oci_core_cluster_network.bm_cluster]
 }
 
-data "oci_core_cluster_network_instances" "bm" {
+data "oci_core_instance_pool_instances" "bm_pool" {
   count = var.run_ansible_from_head ? 1 : 0
 
-  cluster_network_id = oci_core_cluster_network.bm_cluster.id
-  compartment_id     = var.compartment_ocid
-  depends_on         = [time_sleep.wait_bm_instances]
+  compartment_id   = var.compartment_ocid
+  instance_pool_id = one(oci_core_cluster_network.bm_cluster.instance_pools).id
+  depends_on       = [time_sleep.wait_bm_instances]
 }
 
 data "oci_core_instance" "bm_instances" {
   count = var.run_ansible_from_head ? var.bm_node_count : 0
 
-  instance_id = data.oci_core_cluster_network_instances.bm[0].instances[count.index]["id"]
+  instance_id = data.oci_core_instance_pool_instances.bm_pool[0].instances[count.index]["id"]
 }

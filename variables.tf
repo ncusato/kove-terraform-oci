@@ -50,8 +50,8 @@ variable "cluster_network_create_timeout" {
 
 variable "bm_pool_ready_wait" {
   type        = string
-  description = "Delay after cluster network is RUNNING before Terraform reads BM instance IDs (e.g. 5m, 8m). Increase if bootstrap inventory has empty [bm] or missing private IPs."
-  default     = "5m"
+  description = "Delay after cluster network is RUNNING before Terraform reads BM instance IDs from the instance pool (e.g. 10m, 15m). Increase if apply errors on BM data sources or bootstrap has empty [bm]."
+  default     = "10m"
 }
 
 # -------------------------------------------------------------------
