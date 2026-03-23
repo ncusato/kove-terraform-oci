@@ -62,15 +62,6 @@ variable "use_existing_vcn" {
   type        = bool
   description = "If true, use existing VCN and subnets; if false, create new networking."
   default     = false
-
-  validation {
-    condition = !var.use_existing_vcn || (
-      length(var.existing_vcn_id) > 0 &&
-      length(var.existing_public_subnet_id) > 0 &&
-      length(var.existing_private_subnet_id) > 0
-    )
-    error_message = "When use_existing_vcn is true, set existing_vcn_id, existing_public_subnet_id, and existing_private_subnet_id."
-  }
 }
 
 variable "existing_vcn_id" {

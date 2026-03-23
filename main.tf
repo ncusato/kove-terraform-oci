@@ -301,6 +301,17 @@ resource "oci_core_instance_configuration" "bm_cluster" {
   compartment_id = var.compartment_ocid
   display_name   = "bm-cluster-config"
 
+  lifecycle {
+    precondition {
+      condition = !var.use_existing_vcn || (
+        length(trimspace(var.existing_vcn_id)) > 0 &&
+        length(trimspace(var.existing_public_subnet_id)) > 0 &&
+        length(trimspace(var.existing_private_subnet_id)) > 0
+      )
+      error_message = "When use_existing_vcn is true, set existing_vcn_id, existing_public_subnet_id, and existing_private_subnet_id (non-empty)."
+    }
+  }
+
   instance_details {
     instance_type = "compute"
     launch_details {
