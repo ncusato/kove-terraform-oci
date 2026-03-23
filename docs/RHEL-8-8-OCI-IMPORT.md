@@ -16,7 +16,12 @@ Use this flow to get a **RHEL 8.8** image into Oracle Cloud Infrastructure so yo
 
 ---
 
-## 2. Download RHEL 8.8 (KVM / cloud image)
+## 2. Get a RHEL 8.8 disk image
+
+**Option A — Build with Image Builder (custom UEFI/RDMA)**  
+Use the minimal blueprint in **[`docs/blueprints/`](blueprints/README.md)** (`rhel88-bm-native.toml`) on a RHEL Image Builder host, export **qcow2**, then continue at step 3 below.
+
+**Option B — Download a portal image**
 
 1. Sign in at **[Red Hat Customer Portal — Downloads](https://access.redhat.com/downloads)** (or **developers.redhat.com** → Downloads, depending on your subscription).
 2. Find **Red Hat Enterprise Linux 8**.
