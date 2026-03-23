@@ -168,7 +168,7 @@ If you enabled Ansible from the head, check on the head: **`/var/log/oci-hpc-ans
 | Document | Contents |
 |----------|----------|
 | **[STACK-REFERENCE.md](STACK-REFERENCE.md)** | Terraform variables, deployment zip, outputs, Ansible-from-head, playbook notes, file tree, customization |
-| **[OCI-RESOURCE-MANAGER-GUIDE.md](OCI-RESOURCE-MANAGER-GUIDE.md)** | Deploy button, `schema.yaml`, Resource Manager behavior |
+| **[OCI-RESOURCE-MANAGER-GUIDE.md](OCI-RESOURCE-MANAGER-GUIDE.md)** | Deploy button, `schema.yaml`, Resource Manager behavior, **desktop Terraform (Windows)** |
 
 ---
 

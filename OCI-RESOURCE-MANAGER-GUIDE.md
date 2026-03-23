@@ -390,22 +390,95 @@ my_secret:
 
 **Note:** Sensitive values are stored in Terraform state. Use dedicated credentials and restrict state access.
 
-## Testing Locally
+## Testing locally from your desktop (Windows)
 
-Before pushing, test with Terraform CLI:
+Use the **same Terraform** as Resource Manager, but run **`terraform`** on your PC. You **do not** deploy the stack with OCI CLI alone — OCI CLI is only for **creating API-key auth** that the Terraform provider reads.
 
-```bash
+### 1. Install Terraform
+
+Pick one:
+
+- **winget:** `winget install Hashicorp.Terraform`
+- **Chocolatey:** `choco install terraform`
+- Or download a zip from [Terraform installs](https://developer.hashicorp.com/terraform/install), extract, and add the folder to your **PATH**.
+
+Verify:
+
+```powershell
+terraform version
+```
+
+### 2. Install OCI CLI (for API key auth)
+
+- Follow [Installing the CLI (Windows)](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm#Installing_2).
+- Or **winget:** `winget install Oracle.OciCLI`
+
+Verify:
+
+```powershell
+oci --version
+```
+
+### 3. Create an API key and config profile
+
+1. In **OCI Console** → your user → **API keys** → **Add API key** → generate or upload a key pair. Save the private key (e.g. `C:\Users\<you>\.oci\oci_api_key.pem`).
+2. Run the interactive wizard:
+
+```powershell
+oci setup config
+```
+
+Answer prompts for tenancy OCID, user OCID, region, and path to the private key. This creates **`%USERPROFILE%\.oci\config`** (default profile **`DEFAULT`**).
+
+The **Terraform OCI provider** uses this file automatically when you are **not** inside Resource Manager (which uses **resource principal** instead).
+
+### 4. IAM
+
+The **same user** as the API key needs policies to manage resources in your test compartment (VCN, compute, etc.), similar to what you use for Resource Manager.
+
+### 5. Clone the stack and variables file
+
+```powershell
+cd C:\path\to\your\work
+git clone https://github.com/ncusato/kove-terraform-oci.git
+cd kove-terraform-oci
+```
+
+Copy the example tfvars and edit with your OCIDs and keys (file is **gitignored** — never commit it):
+
+```powershell
+copy terraform.tfvars.example terraform.tfvars
+notepad terraform.tfvars
+```
+
+Fill **all required** values (see `variables.tf` / `schema.yaml`). For **multiline** `ssh_private_key`, use a heredoc in the tfvars file as shown in the example.
+
+### 6. Initialize and run Terraform
+
+```powershell
 terraform init
-terraform plan -var-file=test.tfvars
+terraform plan
+terraform apply
 ```
 
-Create `test.tfvars` (don't commit):
-```hcl
-tenancy_ocid     = "ocid1.tenancy.oc1..xxx"
-region           = "us-ashburn-1"
-compartment_ocid = "ocid1.compartment.oc1..xxx"
-ssh_public_key   = "ssh-rsa AAAA..."
+- Terraform auto-loads **`terraform.tfvars`** if it exists in the module directory.
+- Or: `terraform plan -var-file=my.tfvars`
+
+### 7. State and environments
+
+- Default state file: **`terraform.tfstate`** in the repo folder (local only).
+- **Resource Manager** keeps **separate** state per stack — local apply does **not** update an existing RM stack unless you [configure a remote backend](https://developer.hashicorp.com/terraform/language/settings/backends/configuration) and point both at it (advanced).
+- Use a **dedicated test compartment** for desktop experiments so you do not collide with customer stacks.
+
+### 8. Destroy (test only)
+
+```powershell
+terraform destroy
 ```
+
+---
+
+**Summary:** **Terraform CLI** runs the deployment. **OCI CLI** sets up **`~/.oci/config`** + API key so the provider can authenticate on your desktop.
 
 ## Checklist Before Publishing
 
@@ -422,15 +495,16 @@ ssh_public_key   = "ssh-rsa AAAA..."
 
 ```
 my-oci-stack/
-├── README.md              # With deploy button
-├── main.tf                # Main Terraform config
-├── variables.tf           # Variable definitions
-├── outputs.tf             # Output definitions
-├── schema.yaml            # Resource Manager UI schema
+├── README.md                  # With deploy button
+├── main.tf
+├── variables.tf
+├── outputs.tf
+├── schema.yaml
+├── terraform.tfvars.example   # Optional: copy to terraform.tfvars for desktop testing
 ├── scripts/
 │   ├── cloud_init.yaml.tpl
 │   └── bootstrap.sh.tpl
-└── .gitignore             # Ignore .terraform/, *.tfstate, test.tfvars
+└── .gitignore                 # Ignore .terraform/, *.tfstate, terraform.tfvars
 ```
 
 ## References
