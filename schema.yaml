@@ -19,7 +19,6 @@ variableGroups:
       - existing_vcn_id
       - existing_public_subnet_id
       - existing_private_subnet_id
-      - existing_rdma_subnet_id
       - cluster_network_availability_domain
       - bm_boot_volume_size_gbs
       - cluster_network_create_timeout
@@ -117,15 +116,6 @@ variables:
     type: oci:core:subnet:id
     title: "Existing Private Subnet"
     description: "Private subnet for BM nodes when using existing VCN."
-    required: false
-    dependsOn:
-      compartmentId: ${compartment_ocid}
-      vcnId: ${existing_vcn_id}
-
-  existing_rdma_subnet_id:
-    type: oci:core:subnet:id
-    title: "Existing RDMA / secondary VNIC subnet (optional)"
-    description: "Subnet for BM secondary (RDMA) VNIC. If empty with existing VCN, the private subnet is used for both primary and secondary. Prefer a dedicated subnet when possible."
     required: false
     dependsOn:
       compartmentId: ${compartment_ocid}

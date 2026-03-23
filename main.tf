@@ -194,29 +194,11 @@ resource "oci_core_subnet" "private" {
   dns_label                  = "privatesub"
 }
 
-# Cluster network subnet (RDMA secondary VNIC; only when creating new VCN)
-resource "oci_core_subnet" "cluster" {
-  count                      = var.use_existing_vcn ? 0 : 1
-  compartment_id             = var.compartment_ocid
-  display_name               = "cluster-rdma-subnet"
-  vcn_id                     = oci_core_virtual_network.this[0].id
-  cidr_block                 = "10.0.3.0/24"
-  route_table_id             = oci_core_route_table.private[0].id
-  security_list_ids          = [oci_core_security_list.private[0].id]
-  prohibit_public_ip_on_vnic = true
-  dns_label                  = "clustersub"
-}
-
 # Locals to abstract between new vs existing networking
 locals {
   vcn_id            = var.use_existing_vcn ? var.existing_vcn_id : oci_core_virtual_network.this[0].id
   public_subnet_id  = var.use_existing_vcn ? var.existing_public_subnet_id : oci_core_subnet.public[0].id
   private_subnet_id = var.use_existing_vcn ? var.existing_private_subnet_id : oci_core_subnet.private[0].id
-  # Cluster network placement requires primary + secondary VNIC subnets (Oracle TF example / RDMA BM fleets).
-  # New VCN: dedicated 10.0.3.0/24 for RDMA. Existing VCN: set existing_rdma_subnet_id or defaults to private (same as Oracle doc examples).
-  rdma_subnet_id = var.use_existing_vcn ? (
-    length(trimspace(var.existing_rdma_subnet_id)) > 0 ? var.existing_rdma_subnet_id : var.existing_private_subnet_id
-  ) : oci_core_subnet.cluster[0].id
   # BM.Optimized3.36 exists only in ADs with HPC fleet hardware; first tenancy AD may be wrong for PHX etc.
   cluster_network_ad = length(trimspace(var.cluster_network_availability_domain)) > 0 ? var.cluster_network_availability_domain : local.ad_name
 }
@@ -370,13 +352,12 @@ resource "oci_core_cluster_network" "bm_cluster" {
     display_name              = "bm-pool"
   }
 
+  # oci-hpc uses primary_subnet_id only. OCI returns 400 if secondary_vnic_subnets is set for this BM fleet:
+  # "There should be 0 secondaryVnicsSubnets specified" (provider 8.x / CreateClusterNetwork API).
   placement_configuration {
     availability_domain = local.cluster_network_ad
     primary_vnic_subnets {
       subnet_id = local.private_subnet_id
-    }
-    secondary_vnic_subnets {
-      subnet_id = local.rdma_subnet_id
     }
   }
 

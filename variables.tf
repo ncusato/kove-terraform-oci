@@ -82,12 +82,6 @@ variable "existing_private_subnet_id" {
   default     = ""
 }
 
-variable "existing_rdma_subnet_id" {
-  type        = string
-  description = "Optional: subnet OCID for BM secondary (RDMA) VNIC on the cluster network. When use_existing_vcn is true and this is empty, the private subnet is used for both primary and secondary (Oracle doc pattern). Prefer a dedicated subnet in the VCN for RDMA when possible."
-  default     = ""
-}
-
 variable "cluster_network_availability_domain" {
   type        = string
   description = "Optional: availability domain for BM cluster network (e.g. Uocm:PHX-AD-1). Must support BM.Optimized3.36. If empty, uses the tenancy's first AD — wrong AD often yields immediate TERMINATED."
