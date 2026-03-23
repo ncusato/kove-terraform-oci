@@ -2,68 +2,151 @@
 
 [![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip)
 
-A Terraform configuration for provisioning a High-Performance Computing (HPC) cluster on Oracle Cloud Infrastructure (OCI) with Bare Metal nodes.
+## Summary
 
-## Overview
+Terraform on **OCI Resource Manager** creates a **VCN** (or uses yours), a **head node** (`VM.Standard.E6.Flex`), and a **cluster network** with **4× BM.Optimized3.36** (RDMA). BM nodes need a **RHEL 8.8** custom image **OCID** in your compartment. The head can default to **Oracle Linux 8** (no RHSM on the head). Optional **Ansible** at first boot registers RHEL on the BMs and configures RDMA. **BM cluster provisioning often takes 45–90+ minutes** before Terraform continues to the head node.
 
-This stack provisions and configures an HPC cluster on OCI consisting of:
-- **1 Head Node** (VM.Standard.E6.Flex) for cluster management
-- **4 BM.Optimized3.36 nodes** in a **cluster network** (RDMA)
-- **Flexible networking** – create new VCN or use existing
-- **Ansible playbook** for RHEL and RDMA configuration after provisioning
+---
 
-## Features
+## Image build
 
-- **Head Node**: VM.Standard.E6.Flex instance for cluster management and access
-- **Bare Metal Nodes**: 4 BM.Optimized3.36 nodes in a **cluster network** with RDMA
-- **Flexible Networking**: Option to create new VCN or use existing infrastructure
-- **Ansible Automation**: Full HPC stack playbooks included (Slurm, LDAP, NFS, etc.)
+You need a **RHEL 8.8** disk image in OCI (**Compute → Images → Import** from Object Storage). Either download a **KVM/qcow2** from [Red Hat downloads](https://access.redhat.com/downloads) or build one with **Image Builder** using the blueprint below.
 
-## Architecture
+<details>
+<summary><strong>RHEL 8.8 Image Builder blueprint (copy TOML)</strong></summary>
 
+Save as `rhel88-bm-native.toml`. **No SSH keys in the image** — OCI injects `ssh_authorized_keys` at launch. Use `distro = "rhel-88"` only if your Image Builder exposes that name.
+
+```toml
+# Minimal RHEL 8.8: UEFI + serial console + OCI boot + MLX5 RDMA
+
+name = "rhel88-bm-native"
+description = "RHEL 8.8 minimal for OCI BM native UEFI + RDMA"
+version = "1.0.0"
+distro = "rhel-88"
+
+modules = []
+groups = []
+
+[[packages]]
+name = "kernel"
+version = "*"
+
+[[packages]]
+name = "kernel-core"
+version = "*"
+
+[[packages]]
+name = "kernel-modules"
+version = "*"
+
+[[packages]]
+name = "NetworkManager"
+version = "*"
+
+[[packages]]
+name = "openssh-server"
+version = "*"
+
+[[packages]]
+name = "dracut-config-generic"
+version = "*"
+
+[[packages]]
+name = "dracut-network"
+version = "*"
+
+[[packages]]
+name = "grub2-efi-x64"
+version = "*"
+
+[[packages]]
+name = "efibootmgr"
+version = "*"
+
+[[packages]]
+name = "nvme-cli"
+version = "*"
+
+[[packages]]
+name = "iscsi-initiator-utils"
+version = "*"
+
+[[packages]]
+name = "rdma-core"
+version = "*"
+
+[[packages]]
+name = "libibverbs"
+version = "*"
+
+[[packages]]
+name = "libmlx5"
+version = "*"
+
+[customizations.kernel]
+append = "rd.iscsi.firmware=1 rd.iscsi.ibft=1 crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M console=ttyS0,115200n8 net.ifnames=0 biosdevname=0"
+
+[customizations.services]
+enabled = ["sshd", "NetworkManager", "rdma"]
+
+[customizations]
+bootloader = { type = "uefi" }
+
+[[customizations.files]]
+path = "/etc/default/grub"
+mode = "0644"
+user = "root"
+group = "root"
+data = '''
+GRUB_TIMEOUT=5
+GRUB_DISTRIBUTOR="Red Hat Enterprise Linux"
+GRUB_DEFAULT=saved
+GRUB_DISABLE_SUBMENU=true
+GRUB_TERMINAL_OUTPUT="console"
+GRUB_CMDLINE_LINUX="crashkernel=auto console=ttyS0,115200n8 net.ifnames=0 biosdevname=0"
+GRUB_DISABLE_RECOVERY="true"
+'''
+
+[[customizations.files]]
+path = "/etc/dracut.conf.d/uefi.conf"
+mode = "0644"
+user = "root"
+group = "root"
+data = "uefi=yes\n"
+
+[[customizations.files]]
+path = "/etc/dracut.conf.d/rdma.conf"
+mode = "0644"
+user = "root"
+group = "root"
+data = '''
+add_drivers+=" mlx5_core ib_core ib_ipoib rdma_ucm ib_umad nvme nvme_rdma "
+omit_drivers+=" nvme_tcp "
+'''
 ```
-┌─────────────────────────────────────────┐
-│              Terraform                   │
-│  • VCN & Subnets (optional)             │
-│  • Head Node (VM.Standard.E6.Flex)     │
-│  • Cluster network (4x BM.Optimized3.36, RDMA) │
-│  • Public & private subnets             │
-└─────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────┐
-│         Ansible Automation              │
-│  • Full HPC Stack Configuration        │
-│  • Slurm (optional)                     │
-│  • LDAP (optional)                      │
-│  • NFS Storage                          │
-│  • RDMA Configuration                   │
-└─────────────────────────────────────────┘
-```
 
-### Network Configuration
-- **Flexible VCN Setup**: Create a new VCN or use an existing one
-- **Dual Subnet Architecture**: 
-  - Public subnet for head node (with Internet Gateway)
-  - Private subnet for BM nodes (with NAT Gateway)
-- **Complete Networking**: When creating a new VCN, includes:
-  - VCN with DNS label
-  - Public and private subnets with security lists
-  - Internet Gateway for public access
-  - NAT Gateway for outbound internet access from private subnet
-  - Route tables for both subnets
+**Build (example):** on a subscribed RHEL host with Image Builder — `composer-cli blueprints push rhel88-bm-native.toml` → `composer-cli compose start rhel88-bm-native qcow2` → download artifact when **FINISHED**.
 
-### Compute Resources
-- **Head Node**: VM.Standard.E6.Flex (1 OCPU, 8GB RAM) for cluster management
-- **BM Nodes**: 4x BM.Optimized3.36 nodes for compute workloads
-- **Single Image Input**: One RHEL 8.8 image OCID is provided and reused for both BM and head nodes
+**Import:** upload the image to an **Object Storage** bucket → **Compute → Images → Import** → use the image **OCID** as **`bm_node_image_ocid`** in the stack.
 
-### Ansible Configuration
-- **Full HPC Stack**: Includes playbooks for complete HPC cluster setup
-- **Slurm Support**: Optional job scheduler configuration
-- **LDAP Support**: Optional directory services
-- **NFS Storage**: Shared storage configuration
-- **RDMA Roles**: Available roles for RDMA authentication and RHEL preparation
+See Oracle: [Importing a custom image](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/importingcustomimage.htm).
+
+</details>
+
+---
+
+## Terraform / Ansible
+
+| What | Notes |
+|------|--------|
+| **Deploy** | Use the button above or zip `main.tf`, `variables.tf`, `outputs.tf`, `schema.yaml`, `scripts/`, `playbooks/` (+ `inventory.tpl` if used) and create a stack in **Resource Manager**. |
+| **Image** | Set **`bm_node_image_ocid`** to your RHEL 8.8 custom image. Leave **`head_node_image_ocid`** empty to use latest **Oracle Linux 8** on the head. |
+| **SSH** | **`ssh_public_key`** must match the key you use to log in. **`ssh_private_key`** is required when **Run Ansible from head** is **true** (head must SSH to BMs; OCI metadata size limits prevent baking the cluster private key in user_data). |
+| **Ansible from head** | Set **`run_ansible_from_head`** = true, **`rhsm_username`** / **`rhsm_password`** for BMs, dynamic group + policy for **instance principal** (see below). Bootstrap log: **`/var/log/oci-hpc-ansible-bootstrap.log`**. |
+| **Timeouts** | **`cluster_network_create_timeout`** default **90m** (try **2h** if needed). **`bm_pool_ready_wait`** default **5m** (try **8m** if inventory has no BM hosts). |
+
+---
 
 ## Prerequisites
 
@@ -74,10 +157,7 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 
 2. **Authentication:** This stack is for OCI Resource Manager only. It uses the **resource principal** (no API keys). The user running the stack must have permission to create the resources in the chosen compartment.
 
-3. **Custom Image**:
-   - RHEL **8.8** image OCID compatible with `BM.Optimized3.36` and `VM.Standard.E6.Flex`
-   - Image must be in the target compartment  
-   - **Step guide:** [Import RHEL 8.8 into OCI](docs/RHEL-8-8-OCI-IMPORT.md) (Red Hat account → download → Object Storage → import → OCID)
+3. **Custom Image**: RHEL **8.8** image OCID in the target compartment (build/import steps are in **Image build** above).
 
 4. **SSH Key Pair**:
    - Public key for instance access
@@ -117,7 +197,7 @@ This stack provisions and configures an HPC cluster on OCI consisting of:
 | `run_ansible_from_head` | Boolean | false | If true, head node runs the RHEL + RDMA Ansible playbook at first boot via cloud-init |
 | `ssh_private_key` | String | "" | *(Optional)* Private key matching `ssh_public_key`. When set, placed on the head so it can SSH to BM nodes. Required for head-run Ansible unless you run the playbook from your machine. |
 | `instance_ssh_user` | String | "cloud-user" | SSH user on BM nodes (RHEL; typically `cloud-user`) |
-| `head_node_ssh_user` | String | "" | SSH user on head node only (e.g. `opc` for Oracle Linux). If empty, uses `instance_ssh_user`. |
+| `head_node_ssh_user` | String | `opc` | SSH user on head node (`opc` for Oracle Linux head image). |
 | `rhsm_username` | String | "" | RHSM username (required when `run_ansible_from_head = true`) |
 | `rhsm_password` | String | "" | RHSM password (required when `run_ansible_from_head = true`) |
 | `rdma_ping_target` | String | "" | Optional IP for RDMA ping check (e.g. another BM node's RDMA interface) |
@@ -141,10 +221,10 @@ Create a zip file containing all Terraform files:
 
 ```bash
 # On Windows (PowerShell)
-Compress-Archive -Path main.tf,variables.tf,outputs.tf,schema.yaml,scripts,inventory.tpl,playbooks,docs -DestinationPath oci-hpc-bm-cluster-stack.zip
+Compress-Archive -Path main.tf,variables.tf,outputs.tf,schema.yaml,scripts,inventory.tpl,playbooks -DestinationPath oci-hpc-bm-cluster-stack.zip
 
 # On Linux/Mac
-zip -r oci-hpc-bm-cluster-stack.zip main.tf variables.tf outputs.tf schema.yaml inventory.tpl playbooks/ scripts/ docs/
+zip -r oci-hpc-bm-cluster-stack.zip main.tf variables.tf outputs.tf schema.yaml inventory.tpl playbooks/ scripts/
 ```
 
 **Important**: Ensure the zip file contains:
@@ -155,7 +235,6 @@ zip -r oci-hpc-bm-cluster-stack.zip main.tf variables.tf outputs.tf schema.yaml 
 - `scripts/` directory (required when using Run Ansible from head; contains `head_bootstrap.sh.tpl`)
 - `inventory.tpl` (optional, for Ansible)
 - `playbooks/` directory (required when using Run Ansible from head; contains playbook and roles)
-- `docs/` directory (optional; includes [RHEL 8.8 OCI import](docs/RHEL-8-8-OCI-IMPORT.md))
 
 #### 2. Create Stack in OCI Resource Manager
 
