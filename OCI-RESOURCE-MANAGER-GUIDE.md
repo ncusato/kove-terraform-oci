@@ -476,9 +476,74 @@ terraform apply
 terraform destroy
 ```
 
+### 9. Specify config safely (OCI key, tenancy, passwords)
+
+**Goal:** run `init` / `plan` / `apply` without putting secrets in Git, chat logs, or shell history.
+
+#### OCI API private key (the `.pem` you already have)
+
+- Keep the **private key only under** `%USERPROFILE%\.oci\` (or another folder **outside** the repo).
+- **`oci setup config`** writes **`%USERPROFILE%\.oci\config`** with `key_file=...` pointing at that PEM. **Do not** copy the PEM into the Terraform project.
+- The Terraform OCI provider reads **`~/.oci/config`** for API authentication. You do **not** put the API key material in `terraform.tfvars`.
+
+#### Terraform variables (OCIDs vs real secrets)
+
+- **Identifiers (still confidential for customers):** `tenancy_ocid`, `compartment_ocid`, subnet OCIDs, image OCIDs. Put them in a **local** file that is **never committed** (e.g. `terraform.tfvars`). Don’t paste them into public tickets or screenshots.
+- **Secrets:** `ssh_private_key`, `rhsm_password`, and optionally `rhsm_username`. Keep them out of shared copies of `terraform.tfvars`.
+
+**Recommended split (all local / gitignored):**
+
+1. **`terraform.tfvars`** — OCIDs, region, flags, `ssh_public_key`; leave secret vars empty or omit them.
+2. **`secrets.auto.tfvars`** (same folder as `main.tf`) — only secrets. Terraform **auto-loads** `*.auto.tfvars`. This repo’s `.gitignore` ignores `secrets.auto.tfvars`.
+
+Example `secrets.auto.tfvars`:
+
+```hcl
+ssh_private_key = <<-EOT
+-----BEGIN OPENSSH PRIVATE KEY-----
+...
+-----END OPENSSH PRIVATE KEY-----
+EOT
+
+rhsm_username = "your-rhsm-user"
+rhsm_password = "your-rhsm-pass"
+```
+
+Then run as usual:
+
+```powershell
+terraform init
+terraform plan
+terraform apply
+```
+
+**Alternative — environment variables** (handy for automation; the values exist in that shell session):
+
+```powershell
+$env:TF_VAR_rhsm_password = (Get-Content -Raw C:\secure\rhsm_password.txt).Trim()
+terraform plan
+```
+
+Use a file **outside the repo** that you never commit, or a private script you keep local only.
+
+Avoid **`terraform apply -var="rhsm_password=..."`** — that often lands in **PowerShell command history**.
+
+#### Files Terraform writes (also confidential)
+
+- **`terraform.tfstate`** — may contain sensitive values; **gitignored**; do not share.
+- **`crash.log`** — may include config snippets; redact before sharing.
+
+#### Optional: var-files outside the repo
+
+```powershell
+terraform plan `
+  -var-file="C:\Users\you\Documents\oci-stacks\kove.tfvars" `
+  -var-file="C:\Users\you\Documents\oci-stacks\kove-secrets.auto.tfvars"
+```
+
 ---
 
-**Summary:** **Terraform CLI** runs the deployment. **OCI CLI** sets up **`~/.oci/config`** + API key so the provider can authenticate on your desktop.
+**Summary:** **Terraform CLI** runs the deployment. **OCI CLI** sets up **`~/.oci/config`** + API key so the provider can authenticate on your desktop. Use **gitignored** `terraform.tfvars` plus optional **`secrets.auto.tfvars`** (or `TF_VAR_*`) so tenancy details and passwords stay off Git and out of history where possible.
 
 ## Checklist Before Publishing
 

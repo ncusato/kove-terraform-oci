@@ -1,5 +1,6 @@
 # Copy to terraform.tfvars (gitignored) and edit. Terraform loads terraform.tfvars automatically.
-# Never commit terraform.tfvars if it contains private keys or passwords.
+# For passwords / SSH private key / RHSM: use a separate secrets.auto.tfvars (also gitignored)
+# or TF_VAR_* — see OCI-RESOURCE-MANAGER-GUIDE.md section 9.
 
 tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaa..."
 region           = "us-phoenix-1"
