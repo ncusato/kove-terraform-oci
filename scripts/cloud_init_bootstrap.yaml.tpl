@@ -5,5 +5,6 @@ write_files:
     content: ${bootstrap_script_b64}
     encoding: b64
     permissions: '0755'
+# Use `bash` explicitly so a CRLF shebang (from Windows-edited templates) cannot cause "bad interpreter".
 runcmd:
-  - /opt/oci-hpc-bootstrap.sh
+  - bash /opt/oci-hpc-bootstrap.sh

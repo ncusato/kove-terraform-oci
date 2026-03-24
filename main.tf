@@ -296,7 +296,9 @@ resource "oci_core_instance" "head_node" {
   # Match oci-hpc: user key first, then generated key (see local.cluster_ssh_authorized_keys).
   metadata = merge(
     { ssh_authorized_keys = local.cluster_ssh_authorized_keys },
-    var.run_ansible_from_head ? { user_data = base64encode(templatefile("${path.module}/scripts/cloud_init_bootstrap.yaml.tpl", { bootstrap_script_b64 = base64encode(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars)) })) } : {}
+    var.run_ansible_from_head ? { user_data = base64encode(replace(replace(templatefile("${path.module}/scripts/cloud_init_bootstrap.yaml.tpl", {
+      bootstrap_script_b64 = base64encode(replace(replace(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars), "\r\n", "\n"), "\r", "\n"))
+    }), "\r\n", "\n"), "\r", "\n")) } : {}
   )
 }
 

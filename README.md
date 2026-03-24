@@ -271,6 +271,8 @@ If **Run Ansible from head** was **Yes** / `true` when the head was **first** cr
 
 That means the head was launched **without** Ansible `user_data` (variable **`run_ansible_from_head`** was **false** in Resource Manager or Terraform, or you are on an **old** head from before it was enabled). Terraform **does not** install playbooks over SSH later—only **cloud-init** on **first boot** does.
 
+**If `/opt/oci-hpc-bootstrap.sh` exists but there is still no log:** cloud-init may not have run the script (or it exited before the first log line). Check **`sudo cloud-init status`** and **`sudo tail -200 /var/log/cloud-init-output.log`**. On a fixed stack, **`runcmd`** uses **`bash /opt/oci-hpc-bootstrap.sh`** so Windows CRLF line endings cannot break the shebang; re-apply with a **head replace** to pick that up. As a one-off you can run **`sudo bash /opt/oci-hpc-bootstrap.sh`** (then wait **90s** + install time).
+
 **Fix:** Set **`run_ansible_from_head = true`**, run **Apply** again with **replace** on the head instance so OCI recreates it and runs `user_data` once:
 
 ```bash
