@@ -8,6 +8,13 @@ output "head_node_public_ip" {
   value       = oci_core_instance.head_node.public_ip
 }
 
+# Same ED25519 private key Ansible/bootstrap installs on the head for BM access; also in metadata as second authorized_key.
+output "cluster_ssh_private_key_openssh" {
+  description = "If ssh opc@head rejects your RSA key (OpenSSH 9+): save to a file, chmod 600, then ssh -i thatfile opc@<head_node_public_ip>"
+  value         = tls_private_key.cluster_ssh.private_key_openssh
+  sensitive     = true
+}
+
 output "bm_node_private_ips" {
   description = "Private IPs of BM compute-cluster nodes (same order as bm_instance_ids)."
   value       = oci_core_instance.bm_compute_nodes[*].private_ip

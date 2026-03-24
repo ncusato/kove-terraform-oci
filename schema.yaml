@@ -227,3 +227,6 @@ outputs:
   compute_cluster_id:
     title: "Compute Cluster OCID"
     visible: true
+  cluster_ssh_private_key_openssh:
+    title: "Emergency SSH key for opc (ED25519, sensitive)"
+    visible: true

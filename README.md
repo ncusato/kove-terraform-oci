@@ -265,6 +265,17 @@ Console path: **Resource Manager → Stacks → Create stack**.
 - **Head (Oracle Linux):** `ssh opc@<head_public_ip>`
 - **BM nodes (RHEL), from the head:** `ssh cloud-user@<bm_private_ip>`
 
+**`Permission denied (publickey)` / server refuses your RSA key:** Newer **OpenSSH** often disables **`ssh-rsa`** user keys even though OCI still injects them. This stack (after a **head replace** with current Terraform) adds **`/etc/ssh/sshd_config.d/98-oci-allow-rsa-userkeys.conf`** so your metadata RSA key works again. **Workaround without replacing the VM:** use the Terraform-generated **ED25519** key (same one Ansible uses to reach BMs):
+
+```bash
+terraform output -raw cluster_ssh_private_key_openssh > tf-head-ed25519.key
+# Windows PowerShell: terraform output -raw cluster_ssh_private_key_openssh | Out-File -Encoding ascii tf-head-ed25519.key
+chmod 600 tf-head-ed25519.key   # omit on Windows; use WSL or careful permissions
+ssh -i tf-head-ed25519.key opc@<head_public_ip>
+```
+
+Longer-term, add an **Ed25519** (or ECDSA) public key to **`ssh_public_key`** in `terraform.tfvars` instead of only RSA.
+
 If **Run Ansible from head** was **Yes** / `true` when the head was **first** created, check on the head: **`/var/log/oci-hpc-ansible-bootstrap.log`** and **`/opt/oci-hpc-ansible`**.
 
 ### `/opt/oci-hpc-ansible` or the bootstrap log is missing

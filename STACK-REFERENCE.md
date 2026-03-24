@@ -336,7 +336,7 @@ kove-oci-build-2/
 ??? schema.yaml                 # OCI Resource Manager stack UI schema
 ??? scripts/
 ?   ??? head_bootstrap.sh.tpl           # Bootstrap script (written to /opt by cloud-init)
-?   ??? cloud_init_bootstrap.yaml.tpl  # Cloud-config: write script + runcmd (ensures run on RHEL)
+?   ??? cloud_init_head.yaml.tpl       # Cloud-config: ssh-rsa + optional bootstrap + runcmd
 ??? inventory.tpl               # Ansible inventory template (full HPC stack)
 ??? playbooks/
     ??? configure-rhel-rdma.yml # RHEL + RDMA config (run after stack apply)
