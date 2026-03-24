@@ -3,12 +3,12 @@
 [head]
 head-node ansible_host=HEAD_NODE_PUBLIC_IP ansible_user=opc
 
-# BM cluster network nodes (private IPs from stack output bm_node_private_ips)
+# BM nodes (private IPs from stack output bm_node_private_ips; RHEL BM → cloud-user)
 [bm]
-bm-node-1 ansible_host=BM_PRIVATE_IP_1 ansible_user=opc
-bm-node-2 ansible_host=BM_PRIVATE_IP_2 ansible_user=opc
-bm-node-3 ansible_host=BM_PRIVATE_IP_3 ansible_user=opc
-bm-node-4 ansible_host=BM_PRIVATE_IP_4 ansible_user=opc
+bm-node-1 ansible_host=BM_PRIVATE_IP_1 ansible_user=cloud-user
+bm-node-2 ansible_host=BM_PRIVATE_IP_2 ansible_user=cloud-user
+bm-node-3 ansible_host=BM_PRIVATE_IP_3 ansible_user=cloud-user
+bm-node-4 ansible_host=BM_PRIVATE_IP_4 ansible_user=cloud-user
 
 # All nodes (head + bm) for RHEL prep
 [all:children]

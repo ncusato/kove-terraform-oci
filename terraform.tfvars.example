@@ -19,12 +19,21 @@ existing_public_subnet_id  = "ocid1.subnet.oc1.phx.aaaaaaaa..."
 existing_private_subnet_id = "ocid1.subnet.oc1.phx.aaaaaaaa..."
 
 cluster_network_availability_domain = ""
+# oci-hpc parity: false if custom RHEL + pool shows "Launched 0 of N" (HPC agent plugins); keep true for Oracle Linux HPC images.
+use_compute_agent = true
+
+cluster_display_name_prefix  = "bm"
+bm_capacity_reservation_id   = ""
+bm_generic_platform_config   = false
 
 bm_node_count                  = 4
-cluster_network_create_timeout = "90m"
+# Empty = 2h default per BM instance create. Override e.g. "3h" for slow regions.
+cluster_network_create_timeout = ""
 bm_pool_ready_wait             = "10m"
 bm_boot_volume_size_gbs        = 120
 
+# Deliver ./playbooks to head at /opt/oci-hpc-ansible and run Ansible on first boot. false = no zip in user_data (nothing on the VM).
+# After changing false→true, replace the head: terraform apply -replace=oci_core_instance.head_node
 run_ansible_from_head = false
 rhsm_username         = ""
 rhsm_password         = ""

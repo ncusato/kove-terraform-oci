@@ -9,18 +9,18 @@ output "head_node_public_ip" {
 }
 
 output "bm_node_private_ips" {
-  description = "Private IPs of BM nodes (primary VNIC) when Run Ansible from head is true (from instance pool + instance data sources). Otherwise empty; use Console or OCI CLI."
-  value       = var.run_ansible_from_head ? [for inst in data.oci_core_instance.bm_instances : inst.private_ip] : []
+  description = "Private IPs of BM compute-cluster nodes (same order as bm_instance_ids)."
+  value       = oci_core_instance.bm_compute_nodes[*].private_ip
 }
 
-output "cluster_network_id" {
-  description = "Cluster network OCID (RDMA)"
-  value       = oci_core_cluster_network.bm_cluster.id
+output "bm_instance_ids" {
+  description = "OCIDs of BM instances attached to the compute cluster."
+  value       = oci_core_instance.bm_compute_nodes[*].id
 }
 
-output "instance_pool_id" {
-  description = "Instance pool OCID for the BM cluster"
-  value       = one(oci_core_cluster_network.bm_cluster.instance_pools).id
+output "compute_cluster_id" {
+  description = "Compute cluster OCID (BM nodes are oci_core_instance with compute_cluster_id set)."
+  value       = oci_core_compute_cluster.bm_compute.id
 }
 
 # Helper: list existing VCNs in the compartment (for choosing one)

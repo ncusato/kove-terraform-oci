@@ -1,6 +1,10 @@
 ---
-# Configure RHEL and RDMA on head node and BM cluster network nodes.
+# Configure RHEL and RDMA on head node and BM nodes.
 # Run after Terraform apply. Use inventory built from stack outputs.
+#
+# Ansible from head (cloud-init): only runs when Terraform run_ansible_from_head=true.
+# With run_ansible_from_head=false, nothing runs automatically — run this playbook yourself.
+# On the head, if you ever used bootstrap: tail -200 /var/log/oci-hpc-ansible-bootstrap.log
 #
 # Example:
 #   ansible-playbook -i inventory/hosts.yml configure-rhel-rdma.yml \
@@ -10,20 +14,16 @@
 # Or use a vault for secrets:
 #   ansible-playbook -i inventory/hosts.yml configure-rhel-rdma.yml --ask-vault-pass
 
-# Update /etc/hosts on the head first (from inventory only) so bm-node-* resolve before we SSH.
+# If you run Ansible from the head with hostname-only inventory, populate /etc/hosts first.
 - name: Populate /etc/hosts on head from inventory
   hosts: head
   gather_facts: false
   become: true
   tasks:
-    - name: Ensure /etc/hosts has entry for each cluster node
-      ansible.builtin.lineinfile:
-        path: /etc/hosts
-        line: "{{ hostvars[item].ansible_host }} {{ item }}{{ ' headnode' if item == 'head-node' else '' }}"
-        state: present
-        create: true
-      loop: "{{ groups['all'] }}"
-      when: hostvars[item] is defined and hostvars[item].ansible_host is defined
+    - name: Add cluster lines to /etc/hosts (same as cluster_setup role)
+      ansible.builtin.import_role:
+        name: cluster_setup
+        tasks_from: etc_hosts.yml
 
 - name: Cluster setup (hosts file + passwordless SSH)
   hosts: all
@@ -57,8 +57,7 @@
     rdma_interface: "{{ rdma_interface | default('eth2') }}"
     # Set to another BM node's RDMA (secondary VNIC) IP for ping test
     rdma_ping_target: "{{ rdma_ping_target | default('') }}"
-    # OCI CN Auth package (RHEL 8; adjust for your region if needed)
-    oci_cn_auth_rpm_url: "{{ oci_cn_auth_rpm_url | default('https://objectstorage.us-ashburn-1.oraclecloud.com/n/oci-hpc-app-catalog/b/compute-hpc-rdma-auth-oel/c/oci-hpc-app-catalog/rpm/el8/x86_64/oci-cn-auth-1.0.0-1.el8.x86_64.rpm') }}"
+    # oci-cn-auth URLs: defaults in roles/rdma_auth/defaults/main.yml (PHX → IAD → SJC). Override oci_cn_auth_rpm_urls if needed.
   tasks:
     - name: Configure RDMA auth and nm-cloud-setup
       include_role:

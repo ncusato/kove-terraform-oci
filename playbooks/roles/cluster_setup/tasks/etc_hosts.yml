@@ -1,0 +1,12 @@
+---
+# One line per inventory host: IP canonical-name [short aliases]
+# Keep this file in sync when changing the line format (used from playbook + role).
+
+- name: Ensure /etc/hosts has entry for each cluster node
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ hostvars[item].ansible_host }} {{ item }}{% if item == 'head-node' %} headnode{% elif item is match('^bm-node-[0-9]+$') %} bm{{ item | regex_replace('^bm-node-', '') }}{% endif %}"
+    state: present
+    create: true
+  loop: "{{ groups['all'] }}"
+  when: hostvars[item] is defined and hostvars[item].ansible_host is defined

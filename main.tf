@@ -41,6 +41,12 @@ data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
 }
 
+# When using an existing private subnet, read its AD so placement matches (wrong AD → 0 instances launched).
+data "oci_core_subnet" "existing_private" {
+  count     = var.use_existing_vcn ? 1 : 0
+  subnet_id = var.existing_private_subnet_id
+}
+
 locals {
   # Use the first AD by default
   ad_name = data.oci_identity_availability_domains.ads.availability_domains[0].name
@@ -199,45 +205,57 @@ locals {
   vcn_id            = var.use_existing_vcn ? var.existing_vcn_id : oci_core_virtual_network.this[0].id
   public_subnet_id  = var.use_existing_vcn ? var.existing_public_subnet_id : oci_core_subnet.public[0].id
   private_subnet_id = var.use_existing_vcn ? var.existing_private_subnet_id : oci_core_subnet.private[0].id
-  # BM.Optimized3.36 exists only in ADs with HPC fleet hardware; first tenancy AD may be wrong for PHX etc.
-  cluster_network_ad = length(trimspace(var.cluster_network_availability_domain)) > 0 ? var.cluster_network_availability_domain : local.ad_name
+  # AD-specific subnet launches must use the subnet's AD or instance pool creation can stay at 0/N.
+  private_subnet_ad = var.use_existing_vcn ? try(trimspace(data.oci_core_subnet.existing_private[0].availability_domain), "") : try(trimspace(oci_core_subnet.private[0].availability_domain), "")
+  # Same as oci-hpc `ad`: explicit override, else subnet AD if available, else first tenancy AD.
+  cluster_network_ad = length(trimspace(var.cluster_network_availability_domain)) > 0 ? var.cluster_network_availability_domain : (
+    length(local.private_subnet_ad) > 0 ? local.private_subnet_ad : local.ad_name
+  )
+
+  # BM instance create (compute cluster path); same knob as former cluster-network wait.
+  bm_instance_create_timeout = trimspace(var.cluster_network_create_timeout) != "" ? var.cluster_network_create_timeout : "2h"
+
+  # OCI rejects keys with stray CR (common when ssh_public_key is pasted from Windows); never emit empty lines.
+  cluster_ssh_authorized_keys = join("\n", compact([
+    trimspace(replace(var.ssh_public_key, "\r", "")),
+    chomp(trimspace(replace(tls_private_key.cluster_ssh.public_key_openssh, "\r", ""))),
+  ]))
 }
 
 # Single zip of playbooks to stay under OCI metadata limit (32KB). Only used when run_ansible_from_head = true.
+# Exclude site.yml (unused oci-hpc-style mega-playbook) — it pushes user_data over the limit when embedded.
 data "archive_file" "playbooks" {
   count       = var.run_ansible_from_head ? 1 : 0
   type        = "zip"
   source_dir  = "${path.module}/playbooks"
   output_path = "${path.module}/.terraform/playbooks.zip"
+  excludes    = ["site.yml"]
 }
 
 # Bootstrap script inputs (only used when run_ansible_from_head = true)
 locals {
-  instance_pool_id  = one(oci_core_cluster_network.bm_cluster.instance_pools).id
-  extra_vars_yaml   = <<-EOT
+  extra_vars_yaml       = <<-EOT
 rhsm_username: ${jsonencode(var.rhsm_username)}
 rhsm_password: ${jsonencode(var.rhsm_password)}
 rdma_ping_target: ${jsonencode(var.rdma_ping_target)}
 cluster_ssh_user: ${jsonencode(var.instance_ssh_user)}
 EOT
-  # BM private IPs from Terraform (comma-separated); skip null/empty so script can fall back to OCI CLI if needed.
-  bm_private_ips_csv = var.run_ansible_from_head ? join(",", [for i in range(var.bm_node_count) : try(data.oci_core_instance.bm_instances[i].private_ip, "") if try(data.oci_core_instance.bm_instances[i].private_ip, "") != ""]) : ""
-  # One compressed payload + small extra_vars to keep user_data under 32KB. RHSM b64 so script can register before dnf.
+  bm_private_ips_csv    = var.run_ansible_from_head ? join(",", compact(oci_core_instance.bm_compute_nodes[*].private_ip)) : ""
+  bm_instance_ocids_csv = var.run_ansible_from_head ? join(",", oci_core_instance.bm_compute_nodes[*].id) : ""
   bootstrap_template_vars = var.run_ansible_from_head ? {
-    instance_pool_id    = local.instance_pool_id
-    compartment_id      = var.compartment_ocid
-    region              = var.region
-    tenancy_ocid        = var.tenancy_ocid
-    bm_count            = var.bm_node_count
-    instance_ssh_user   = var.instance_ssh_user
-    head_node_ssh_user  = var.head_node_ssh_user != "" ? var.head_node_ssh_user : "opc"
-    payload_b64         = filebase64(data.archive_file.playbooks[0].output_path)
-    extra_vars_b64      = base64encode(local.extra_vars_yaml)
-    rhsm_username_b64   = base64encode(var.rhsm_username)
-    rhsm_password_b64   = base64encode(var.rhsm_password)
-    bm_private_ips_csv  = local.bm_private_ips_csv
-    # Terraform-generated ED25519 key is already in BM authorized_keys; small enough to embed (no user private key tvar).
-    ssh_private_key_b64 = base64encode(tls_private_key.cluster_ssh.private_key_openssh)
+    compartment_id        = var.compartment_ocid
+    region                = var.region
+    tenancy_ocid          = var.tenancy_ocid
+    bm_count              = var.bm_node_count
+    instance_ssh_user     = var.instance_ssh_user
+    head_node_ssh_user    = var.head_node_ssh_user != "" ? var.head_node_ssh_user : "opc"
+    payload_b64           = filebase64(data.archive_file.playbooks[0].output_path)
+    extra_vars_b64        = base64encode(local.extra_vars_yaml)
+    rhsm_username_b64     = base64encode(var.rhsm_username)
+    rhsm_password_b64     = base64encode(var.rhsm_password)
+    bm_private_ips_csv    = local.bm_private_ips_csv
+    bm_instance_ocids_csv = local.bm_instance_ocids_csv
+    ssh_private_key_b64   = base64encode(tls_private_key.cluster_ssh.private_key_openssh)
   } : {}
 }
 
@@ -248,9 +266,10 @@ EOT
 resource "oci_core_instance" "head_node" {
   compartment_id      = var.compartment_ocid
   availability_domain = local.ad_name
-  depends_on          = [time_sleep.wait_bm_instances]
+  # After BM nodes exist (Ansible bootstrap needs OCIDs / private IPs in user_data).
+  depends_on = [time_sleep.wait_bm_instances]
 
-  display_name = "head-node"
+  display_name = "${var.cluster_display_name_prefix}-head-node"
   shape        = "VM.Standard.E6.Flex"
 
   shape_config {
@@ -265,7 +284,7 @@ resource "oci_core_instance" "head_node" {
   source_details {
     source_type = "image"
     # When head_node_image_ocid is empty, use latest OL8 so head doesn't need RHSM; Ansible registers RHEL on BM only.
-    source_id   = var.head_node_image_ocid != "" ? var.head_node_image_ocid : (length(data.oci_core_images.ol8_head.images) > 0 ? data.oci_core_images.ol8_head.images[0].id : var.bm_node_image_ocid)
+    source_id = var.head_node_image_ocid != "" ? var.head_node_image_ocid : (length(data.oci_core_images.ol8_head.images) > 0 ? data.oci_core_images.ol8_head.images[0].id : var.bm_node_image_ocid)
   }
 
   create_vnic_details {
@@ -274,24 +293,19 @@ resource "oci_core_instance" "head_node" {
     hostname_label   = "headnode"
   }
 
-  # Match oci-hpc: user key first, then generated key; newline between and at end (OCI authorized_keys format)
+  # Match oci-hpc: user key first, then generated key (see local.cluster_ssh_authorized_keys).
   metadata = merge(
-    { ssh_authorized_keys = "${trimspace(var.ssh_public_key)}\n${tls_private_key.cluster_ssh.public_key_openssh}\n" },
+    { ssh_authorized_keys = local.cluster_ssh_authorized_keys },
     var.run_ansible_from_head ? { user_data = base64encode(templatefile("${path.module}/scripts/cloud_init_bootstrap.yaml.tpl", { bootstrap_script_b64 = base64encode(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars)) })) } : {}
   )
 }
 
 # -------------------------------------------------------------------
-# Cluster network (RDMA) for 4x BM.Optimized3.36
+# BM nodes via compute cluster (oracle-quickstart/oci-hpc compute-cluster.tf + compute-nodes.tf)
+# Avoids cluster network + instance pool "Create instances in pool" path.
 # -------------------------------------------------------------------
 
-# Instance configuration template for cluster network (no create_vnic_details; cluster network provides VNICs)
-resource "oci_core_instance_configuration" "bm_cluster" {
-  compartment_id = var.compartment_ocid
-  display_name     = "bm-cluster-config"
-  # Required for templates not cloned from an existing instance (matches oracle-quickstart/oci-hpc).
-  source = "NONE"
-
+resource "oci_core_compute_cluster" "bm_compute" {
   lifecycle {
     precondition {
       condition = !var.use_existing_vcn || (
@@ -303,95 +317,85 @@ resource "oci_core_instance_configuration" "bm_cluster" {
     }
   }
 
-  instance_details {
-    instance_type = "compute"
-    launch_details {
-      availability_domain = local.cluster_network_ad
-      compartment_id      = var.compartment_ocid
-      display_name        = "bm-node"
-      shape               = "BM.Optimized3.36"
-
-      source_details {
-        source_type             = "image"
-        image_id                = var.bm_node_image_ocid
-        boot_volume_size_in_gbs = var.bm_boot_volume_size_gbs
-        boot_volume_vpus_per_gb = 30
-      }
-
-      metadata = {
-        ssh_authorized_keys = "${trimspace(var.ssh_public_key)}\n${tls_private_key.cluster_ssh.public_key_openssh}\n"
-      }
-
-      agent_config {
-        are_all_plugins_disabled = false
-        is_management_disabled   = true
-        is_monitoring_disabled   = false
-        plugins_config {
-          name          = "OS Management Service Agent"
-          desired_state = "DISABLED"
-        }
-        plugins_config {
-          name          = "Compute HPC RDMA Authentication"
-          desired_state = "ENABLED"
-        }
-        plugins_config {
-          name          = "Compute HPC RDMA Auto-Configuration"
-          desired_state = "ENABLED"
-        }
-      }
-    }
-  }
+  availability_domain = local.cluster_network_ad
+  compartment_id      = var.compartment_ocid
+  display_name        = "${var.cluster_display_name_prefix}-compute-cluster"
 }
 
-resource "oci_core_cluster_network" "bm_cluster" {
-  compartment_id = var.compartment_ocid
-  display_name   = "bm-rdma-cluster"
+resource "oci_core_instance" "bm_compute_nodes" {
+  count      = var.bm_node_count
+  depends_on = [oci_core_compute_cluster.bm_compute]
 
-  instance_pools {
-    instance_configuration_id = oci_core_instance_configuration.bm_cluster.id
-    size                      = var.bm_node_count
-    display_name              = "bm-pool"
-  }
+  availability_domain = local.cluster_network_ad
+  compartment_id      = var.compartment_ocid
+  display_name        = "${var.cluster_display_name_prefix}-bm-${count.index + 1}"
+  shape               = var.bm_node_shape
 
-  # oci-hpc uses primary_subnet_id only. OCI returns 400 if secondary_vnic_subnets is set for this BM fleet:
-  # "There should be 0 secondaryVnicsSubnets specified" (provider 8.x / CreateClusterNetwork API).
-  placement_configuration {
-    availability_domain = local.cluster_network_ad
-    primary_vnic_subnets {
-      subnet_id = local.private_subnet_id
+  capacity_reservation_id = trimspace(var.bm_capacity_reservation_id) != "" ? var.bm_capacity_reservation_id : null
+
+  dynamic "platform_config" {
+    for_each = var.bm_generic_platform_config ? [1] : []
+    content {
+      type                                           = "GENERIC_BM"
+      is_symmetric_multi_threading_enabled           = var.bm_smt_enabled
+      is_access_control_service_enabled              = false
+      is_input_output_memory_management_unit_enabled = false
+      are_virtual_instructions_enabled               = false
+      numa_nodes_per_socket                          = var.bm_numa_nodes_per_socket
+      percentage_of_cores_enabled                    = 100
     }
   }
 
-  # BM cluster networks can take 45–90+ min to reach RUNNING when capacity is tight. Configurable via cluster_network_create_timeout.
+  agent_config {
+    are_all_plugins_disabled = false
+    is_management_disabled   = true
+    is_monitoring_disabled   = false
+    plugins_config {
+      name          = "OS Management Service Agent"
+      desired_state = "DISABLED"
+    }
+    dynamic "plugins_config" {
+      for_each = var.use_compute_agent ? ["ENABLED"] : ["DISABLED"]
+      content {
+        name          = "Compute HPC RDMA Authentication"
+        desired_state = plugins_config.value
+      }
+    }
+    dynamic "plugins_config" {
+      for_each = var.use_compute_agent ? ["ENABLED"] : ["DISABLED"]
+      content {
+        name          = "Compute HPC RDMA Auto-Configuration"
+        desired_state = plugins_config.value
+      }
+    }
+  }
+
+  metadata = {
+    ssh_authorized_keys = local.cluster_ssh_authorized_keys
+  }
+
+  source_details {
+    source_type             = "image"
+    source_id               = var.bm_node_image_ocid
+    boot_volume_size_in_gbs = var.bm_boot_volume_size_gbs
+    boot_volume_vpus_per_gb = 30
+  }
+
+  compute_cluster_id = oci_core_compute_cluster.bm_compute.id
+
+  create_vnic_details {
+    subnet_id        = local.private_subnet_id
+    assign_public_ip = false
+  }
+
   timeouts {
-    create = var.cluster_network_create_timeout
+    create = local.bm_instance_create_timeout
     update = "30m"
     delete = "30m"
   }
 }
 
-# -------------------------------------------------------------------
-# BM instance private IPs via Terraform when run_ansible_from_head
-# -------------------------------------------------------------------
-# oci-hpc lists cluster nodes via either oci_core_cluster_network_instances OR
-# oci_core_instance_pool_instances. A cluster network embeds an instance pool; in
-# practice list_cluster_network_instances can return [] while list_instance_pool_instances
-# already returns members — use the instance pool ID (oracle-quickstart/oci-hpc pattern).
 resource "time_sleep" "wait_bm_instances" {
   create_duration = var.run_ansible_from_head ? var.bm_pool_ready_wait : "0s"
-  depends_on      = [oci_core_cluster_network.bm_cluster]
-}
-
-data "oci_core_instance_pool_instances" "bm_pool" {
-  count = var.run_ansible_from_head ? 1 : 0
-
-  compartment_id   = var.compartment_ocid
-  instance_pool_id = one(oci_core_cluster_network.bm_cluster.instance_pools).id
-  depends_on       = [time_sleep.wait_bm_instances]
-}
-
-data "oci_core_instance" "bm_instances" {
-  count = var.run_ansible_from_head ? var.bm_node_count : 0
-
-  instance_id = data.oci_core_instance_pool_instances.bm_pool[0].instances[count.index]["id"]
+  depends_on      = [oci_core_instance.bm_compute_nodes]
 }

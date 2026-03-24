@@ -436,7 +436,7 @@ The **Terraform OCI provider** uses this file automatically when you are **not**
 
 The **same user** as the API key needs policies to manage resources in your test compartment (VCN, compute, etc.), similar to what you use for Resource Manager.
 
-### 5. Clone the stack and variables file
+### 5. Clone the stack and point at your var-files
 
 ```powershell
 cd C:\path\to\your\work
@@ -444,25 +444,36 @@ git clone https://github.com/ncusato/kove-terraform-oci.git
 cd kove-terraform-oci
 ```
 
-Copy the example tfvars and edit with your OCIDs and keys (file is **gitignored** — never commit it):
+Keep your variable files **outside the repo** (e.g. under **Downloads**) so they are never committed. Use **HCL syntax** inside the files; the **`.txt`** extension is fine — Terraform reads them when you pass **`-var-file`**.
 
-```powershell
-copy terraform.tfvars.example terraform.tfvars
-notepad terraform.tfvars
-```
+**Example paths (adjust if you move the files):**
 
-Fill **all required** values (see `variables.tf` / `schema.yaml`). Head-run Ansible uses the Terraform-generated SSH key embedded in bootstrap (no `ssh_private_key` variable).
+| File | Purpose |
+|------|--------|
+| `C:\Users\ncusato\Downloads\kove-terraform.tfvars.txt` | Tenancy, region, compartment, subnets, `ssh_public_key`, flags, etc. |
+| `C:\Users\ncusato\Downloads\secrets.auto.tfvars.txt` | RHSM username/password when **Run Ansible from head** is true (optional otherwise) |
+
+Create/edit them with Notepad or your editor. Copy from **`terraform.tfvars.example`** in the repo for the non-secret file shape. Head-run Ansible uses the Terraform-generated SSH key in bootstrap (no SSH private key variable).
+
+**Important:** Files named `*.txt` in **Downloads** are **not** auto-loaded. You must pass **both** paths on every `plan` / `apply` / `destroy` (see below).
 
 ### 6. Initialize and run Terraform
 
+From the **repo directory** (where `main.tf` is):
+
 ```powershell
 terraform init
-terraform plan
-terraform apply
+
+terraform plan `
+  -var-file="C:\Users\ncusato\Downloads\kove-terraform.tfvars.txt" `
+  -var-file="C:\Users\ncusato\Downloads\secrets.auto.tfvars.txt"
+
+terraform apply `
+  -var-file="C:\Users\ncusato\Downloads\kove-terraform.tfvars.txt" `
+  -var-file="C:\Users\ncusato\Downloads\secrets.auto.tfvars.txt"
 ```
 
-- Terraform auto-loads **`terraform.tfvars`** if it exists in the module directory.
-- Or: `terraform plan -var-file=my.tfvars`
+If you do **not** use secrets yet, you can omit the second `-var-file` or keep an empty/minimal `secrets.auto.tfvars.txt` (e.g. only `rhsm_username = ""` / `rhsm_password = ""`).
 
 ### 7. State and environments
 
@@ -472,8 +483,12 @@ terraform apply
 
 ### 8. Destroy (test only)
 
+Use the **same** `-var-file` arguments as `apply`:
+
 ```powershell
-terraform destroy
+terraform destroy `
+  -var-file="C:\Users\ncusato\Downloads\kove-terraform.tfvars.txt" `
+  -var-file="C:\Users\ncusato\Downloads\secrets.auto.tfvars.txt"
 ```
 
 ### 9. Specify config safely (OCI key, tenancy, passwords)
@@ -491,25 +506,30 @@ terraform destroy
 - **Identifiers (still confidential for customers):** `tenancy_ocid`, `compartment_ocid`, subnet OCIDs, image OCIDs. Put them in a **local** file that is **never committed** (e.g. `terraform.tfvars`). Don’t paste them into public tickets or screenshots.
 - **Secrets:** `rhsm_password`, and optionally `rhsm_username` (if you treat it as sensitive). Keep them out of shared copies of `terraform.tfvars`.
 
-**Recommended split (all local / gitignored):**
+**Recommended split (files outside the repo):**
 
-1. **`terraform.tfvars`** — OCIDs, region, flags, `ssh_public_key`; leave RHSM secrets empty or omit them.
-2. **`secrets.auto.tfvars`** (same folder as `main.tf`) — RHSM credentials when using Ansible from head. Terraform **auto-loads** `*.auto.tfvars`. This repo’s `.gitignore` ignores `secrets.auto.tfvars`.
+1. **`C:\Users\ncusato\Downloads\kove-terraform.tfvars.txt`** — OCIDs, region, flags, `ssh_public_key`; no RHSM passwords here.
+2. **`C:\Users\ncusato\Downloads\secrets.auto.tfvars.txt`** — RHSM credentials when using Ansible from head.
 
-Example `secrets.auto.tfvars`:
+Example `secrets.auto.tfvars.txt`:
 
 ```hcl
 rhsm_username = "your-rhsm-user"
 rhsm_password = "your-rhsm-pass"
 ```
 
-Then run as usual:
+Because these live outside the module folder and use a **`.txt`** extension, pass them explicitly:
 
 ```powershell
-terraform init
-terraform plan
-terraform apply
+terraform plan `
+  -var-file="C:\Users\ncusato\Downloads\kove-terraform.tfvars.txt" `
+  -var-file="C:\Users\ncusato\Downloads\secrets.auto.tfvars.txt"
+terraform apply `
+  -var-file="C:\Users\ncusato\Downloads\kove-terraform.tfvars.txt" `
+  -var-file="C:\Users\ncusato\Downloads\secrets.auto.tfvars.txt"
 ```
+
+*(Alternatively: name files `terraform.tfvars` and `secrets.auto.tfvars` **inside** the repo folder — Terraform auto-loads those — but then rely on `.gitignore` and never commit them.)*
 
 **Alternative — environment variables** (handy for automation; the values exist in that shell session):
 

@@ -12,7 +12,11 @@ This document supplements the **[README](README.md)** with Terraform **variable*
 | **Image** | Set **`bm_node_image_ocid`** to your RHEL 8.8 custom image. Leave **`head_node_image_ocid`** empty to use latest **Oracle Linux 8** on the head. |
 | **SSH** | **`ssh_public_key`** is your login key. When **Run Ansible from head** is **true**, the head uses the **Terraform-generated ED25519** private key (embedded in bootstrap) to SSH to BMs; that key's public half is already on all nodes. |
 | **Ansible from head** | Set **`run_ansible_from_head`** = true, **`rhsm_username`** / **`rhsm_password`** for BMs, dynamic group + policy for **instance principal** (see [Run Ansible from head node](#run-ansible-from-head-node-resource-manager)). Bootstrap log: **`/var/log/oci-hpc-ansible-bootstrap.log`**. |
-| **Timeouts** | **`cluster_network_create_timeout`** default **90m** (try **2h** if needed). **`bm_pool_ready_wait`** default **10m** (try **15m** if BM instance data or inventory is still empty). |
+| **Timeouts** | Empty **`cluster_network_create_timeout`** uses **`max(oci-hpc formula, 120m)`** (BM fabric often needs &gt;30m). Override with e.g. `180m` if Console still shows PROVISIONING. **`bm_pool_ready_wait`** default **10m** after RUNNING. |
+
+### Compared to [aeron-terraform-oci](https://github.com/ncusato/aeron-terraform-oci)
+
+That stack deploys **regular flex VMs** via **`oci_core_instance`** with explicit **`controller_ad`** / **`benchmark_ad`** ? no **`oci_core_cluster_network`**, no **BM.Optimized3.36**, no RDMA island. VM instances usually reach **RUNNING** in minutes, so Terraform rarely times out. **This stack** provisions an **HPC bare metal cluster network** (different Compute API); **PROVISIONING** for 30?120+ minutes is normal OCI behavior, not something you fix by copying Aeron?s `compute.tf`. Use a long enough **`cluster_network_create_timeout`** and confirm **`cluster_network_availability_domain`** (same idea as Aeron?s required AD vars) matches where your private subnet and shape are supported.
 
 ---
 
@@ -51,9 +55,9 @@ This document supplements the **[README](README.md)** with Terraform **variable*
 | `existing_vcn_id` | String | "" | Existing VCN OCID (required if `use_existing_vcn = true`) |
 | `existing_public_subnet_id` | String | "" | Existing public subnet OCID for head node |
 | `existing_private_subnet_id` | String | "" | Existing private subnet OCID for BM nodes |
-| `cluster_network_availability_domain` | String | "" | Optional AD (e.g. `Uocm:PHX-AD-1`) for BM fleet; empty = first tenancy AD |
+| `cluster_network_availability_domain` | String | "" | Same role as oci-hpc **`ad`**; empty = first tenancy AD |
 | `bm_boot_volume_size_gbs` | Number | 120 | BM boot volume size in GB |
-| `cluster_network_create_timeout` | String | "90m" | Max wait for BM cluster network to reach RUNNING. Increase (e.g. `2h`) if apply times out; BM can take 45?90+ min. |
+| `cluster_network_create_timeout` | String | "" | Empty = **max(oci-hpc formula, 120m)**. Set e.g. `180m` if still timing out. |
 
 **Note**: When `use_existing_vcn = true`, you must provide all three existing resource IDs. When `use_existing_vcn = false`, a new VCN will be created with:
 - VCN CIDR: 10.0.0.0/16
@@ -72,7 +76,7 @@ This document supplements the **[README](README.md)** with Terraform **variable*
 | `rhsm_username` | String | "" | RHSM username (required when `run_ansible_from_head = true`) |
 | `rhsm_password` | String | "" | RHSM password (required when `run_ansible_from_head = true`) |
 | `rdma_ping_target` | String | "" | Optional IP for RDMA ping check (e.g. another BM node's RDMA interface) |
-| `bm_pool_ready_wait` | String | "10m" | Wait after cluster network RUNNING before reading BM instance IDs from the **instance pool** for Ansible bootstrap. Try **15m** if apply fails or `[bm]` is empty. |
+| `bm_pool_ready_wait` | String | "10m" | Wait after RUNNING before **`oci_core_cluster_network_instances`** + **`oci_core_instance`** (oci-hpc **data.tf** pattern). |
 
 **Recommended:** Set **Head node image** to an **Oracle Linux** image. The head then uses free OL repos (no RHSM), installs Ansible and OCI CLI, and runs the playbook; Ansible registers **RHEL only on the BM nodes** and does all installs there.
 
@@ -205,9 +209,9 @@ If you set **Run Ansible from head at first boot** to **true** in the stack, the
 
 3. **Apply the stack** with `run_ansible_from_head = true`, `rhsm_username`, and `rhsm_password` set. After the head node boots, check `/var/log/oci-hpc-ansible-bootstrap.log` on the head node for playbook progress.
 
-**Note:** Like [oci-hpc](https://github.com/oracle-quickstart/oci-hpc), BM node private IPs are obtained via **Terraform data sources** at apply time: **`oci_core_instance_pool_instances`** (the cluster network?s embedded instance pool) plus **`oci_core_instance`** per member. The older `oci_core_cluster_network_instances` list can stay **empty** even when the pool already has instances, which caused **Invalid index** errors ? this stack uses the **instance pool** list instead (same pattern as oci-hpc for non?cluster-network pools). After the cluster network reaches **RUNNING**, Terraform waits **`bm_pool_ready_wait`** (default **10m**) before reading IDs, then injects IPs into the bootstrap script. The head node is created after that wait. user_data is delivered as **cloud-init cloud-config** (write script + runcmd); the script then runs Ansible with the pre-built inventory. Check **`/var/log/oci-hpc-ansible-bootstrap.log`** on the head node for progress. Set **SSH user for instances** to match your image (`cloud-user` for RHEL, `opc` for Oracle Linux). The playbook updates **/etc/hosts** and **passwordless SSH** on all nodes.
+**Note:** Aligned with [oracle-quickstart/oci-hpc](https://github.com/oracle-quickstart/oci-hpc) **data.tf**: BM instance IDs come from **`oci_core_cluster_network_instances`** plus one **`oci_core_instance`** data source per node. After the cluster network reaches **RUNNING**, Terraform waits **`bm_pool_ready_wait`** (default **10m**), then reads IDs and (when enabled) injects private IPs into the bootstrap script. user_data is **cloud-init**; Ansible runs on the head at first boot. Log: **`/var/log/oci-hpc-ansible-bootstrap.log`**. Set **SSH user for instances** to match your image (`cloud-user` for RHEL, `opc` for Oracle Linux).
 
-**Why does provisioning take so long?** The stack creates a **cluster network** with **bare metal** nodes (BM.Optimized3.36) on an **RDMA fabric**. OCI must allocate physical capacity, wire the cluster network, and bring the instance pool to **RUNNING**?often **45?90+ minutes** depending on region, AD, and demand. Terraform only polls until the API reports **RUNNING** (see **Cluster network create timeout**, default **90m**). After that, a short wait reads BM IPs, then the **head VM** is created. None of that is ?Terraform being slow?; it is **OCI BM cluster provisioning time**.
+**Why does provisioning take so long?** The stack creates a **cluster network** with **bare metal** nodes (BM.Optimized3.36). Terraform polls until OCI reports **RUNNING**. Default wait follows oci-hpc **`timeout_ip`**: `((bm_node_count - bm_node_count%20)/20 + 1) * 30` minutes unless **`cluster_network_create_timeout`** is set. Then **`bm_pool_ready_wait`**, then the **head VM** is created.
 
 **Terraform never runs Ansible** ? it only creates the instance with user_data. The bootstrap runs **inside the VM at first boot** via cloud-init. So "Apply complete" in Terraform just means the instance was created; configuration happens asynchronously on the node.
 
@@ -286,7 +290,7 @@ cat /etc/hosts
 
 **"environment: line N: No such file or directory":** These messages often come from the OS or OCI CLI environment (e.g. sourcing `/etc/environment`) and can be ignored; the bootstrap does not depend on them.
 
-**"timeout while waiting for state to become 'RUNNING'" on `oci_core_cluster_network.bm_cluster`:** The BM cluster network stayed in **PROVISIONING** longer than the Terraform create timeout. Bare metal capacity can take **45?90+ minutes** in some regions. (1) **What was provisioned:** When this error occurs, the **cluster network** exists in OCI (and may still be PROVISIONING or may have reached RUNNING after the timeout). The **head node and BM instances are not created yet**?the head node is only created after the cluster network reaches RUNNING and then a 5m wait. So there is no node to log into until a later apply succeeds. (2) **Re-apply behavior:** If you **re-run Apply** (same stack): Terraform will see the cluster network in state. If it is **RUNNING**, Terraform will continue immediately and create the head node, run the 5m wait, then the head?s cloud-init will run and **Ansible will run at first boot** as usual. So **yes?if you let the cluster network finish provisioning (or it already reached RUNNING), re-running apply will create the head node and Ansible will run.** (3) **Increase timeout:** In stack variables, set **Cluster network create timeout** to a higher value (e.g. `90m` or `2h`). Default is `90m`. (4) **Check in OCI Console:** **Compute ? Cluster networks** in your compartment ? find `bm-rdma-cluster` ? check **State**. If it is RUNNING, run Apply again and the run will proceed to create the head node and complete.
+**"timeout while waiting for state to become 'RUNNING'" on `oci_core_cluster_network.bm_cluster`:** Provisioning exceeded the create timeout (default: oci-hpc formula above; override with **`cluster_network_create_timeout`**). **Re-apply** once the cluster network is **RUNNING** in the Console so Terraform can continue to the head node and Ansible. Increase **`cluster_network_create_timeout`** (e.g. `90m`, `2h`) if needed.
 
 **More verbose Terraform logs during apply:** To see detailed provider API calls and polling, run Terraform with `TF_LOG=DEBUG` (e.g. in a local run: `TF_LOG=DEBUG terraform apply`). In Resource Manager you don?t control this; the apply log already shows "Still creating... [Xm elapsed]" for long-running resources. The cluster network state is reported in the error message ("last state: 'PROVISIONING'").
 

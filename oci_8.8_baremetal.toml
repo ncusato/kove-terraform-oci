@@ -1,0 +1,81 @@
+# RHEL 8.8 image for BM.Optimized3.36 + OCI cluster network (see oracle-quickstart/oci-hpc).
+name = "rhel-8.8-baremetal"
+description = "RHEL 8.8 baremetal"
+version = "1.0.0"
+distro = "rhel-8.8"
+
+modules = []
+groups = []
+
+[[packages]]
+name = "firewalld"
+version = "*"
+
+[[packages]]
+name = "kernel"
+version = "4.18.0-553.el8_10.x86_64"
+
+[[packages]]
+name = "kernel-abi-stablelists"
+version = "4.18.0-553.el8_10.noarch"
+
+[[packages]]
+name = "kernel-core"
+version = "4.18.0-553.el8_10.x86_64"
+
+[[packages]]
+name = "kernel-headers"
+version = "4.18.0-553.el8_10.x86_64"
+
+[[packages]]
+name = "kernel-modules"
+version = "4.18.0-553.el8_10.x86_64"
+
+[[packages]]
+name = "kernel-modules-extra"
+version = "4.18.0-553.el8_10.x86_64"
+
+[[packages]]
+name = "iscsi-initiator-utils"
+version = "*"
+
+[[packages]]
+name = "iscsi-initiator-utils-iscsiuio"
+version = "*"
+
+[[packages]]
+name = "libiscsi"
+version = "*"
+
+[[packages]]
+name = "udisks2-iscsi"
+version = "*"
+
+[customizations.kernel]
+append = "rd.iscsi.ibft=1 rd.iscsi.firmware=1 rd.iscsi.param=node.session.timeo.replacement_timeout=6000 network-config=disabled crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M"
+
+[customizations.services]
+enabled = ["sshd", "kdump"]
+
+[[customizations.files]]
+path = "/etc/sysctl.d/99-sysctl.conf"
+mode = "644"
+user = "root"
+group = "root"
+data = "kernel.sysrq = 1\n"
+
+[[customizations.files]]
+path = "/etc/dracut.conf"
+mode = "644"
+user = "root"
+group = "root"
+data = "add_drivers+=\" be2iscsi bnx2i bnxt_en iscsi_ibft iscsi_tcp mlx5_core pci_hyperv_intf tls \"\nomit_drivers+=\" nvme_fabrics nvme_tcp \"\n"
+
+[[customizations.files]]
+path = "/etc/modprobe.d/blacklist.conf"
+mode = "644"
+user = "root"
+group = "root"
+data = "blacklist nvme_tcp\nblacklist nvme_fabrics\ninstall nvme_tcp /bin/false\ninstall nvme_fabrics /bin/false\n"
+
+

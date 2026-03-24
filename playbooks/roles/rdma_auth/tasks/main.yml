@@ -36,11 +36,22 @@
   changed_when: true
   failed_when: false
 
-# oci-cn-auth
-- name: Install oci-cn-auth rpm
+# oci-cn-auth (try multiple regional object-storage URLs; override oci_cn_auth_rpm_urls if needed)
+- name: Install oci-cn-auth rpm from regional URLs
   ansible.builtin.dnf:
-    name: "{{ oci_cn_auth_rpm_url }}"
+    name: "{{ item }}"
     state: present
+  loop: "{{ oci_cn_auth_rpm_urls }}"
+  register: oci_cn_auth_install_attempts
+  failed_when: false
+
+- name: Fail if oci-cn-auth could not be installed from any URL
+  ansible.builtin.assert:
+    that:
+      - oci_cn_auth_install_attempts.results | selectattr('failed', 'equalto', false) | list | length > 0
+    fail_msg: >-
+      oci-cn-auth install failed for all URLs. Check network and override oci_cn_auth_rpm_urls
+      (see roles/rdma_auth/defaults/main.yml).
 
 - name: Restart oci-cn-auth service
   ansible.builtin.systemd:

@@ -1,0 +1,8 @@
+---
+# oci-cn-auth RPM is published to Oracle HPC app catalog object storage per region.
+# Try home region first, then fall back (cross-region download still works for many tenancies).
+# Override with -e 'oci_cn_auth_rpm_urls=["https://..."]' or set a single URL list.
+oci_cn_auth_rpm_urls:
+  - "https://objectstorage.us-phoenix-1.oraclecloud.com/n/oci-hpc-app-catalog/b/compute-hpc-rdma-auth-oel/c/oci-hpc-app-catalog/rpm/el8/x86_64/oci-cn-auth-1.0.0-1.el8.x86_64.rpm"
+  - "https://objectstorage.us-ashburn-1.oraclecloud.com/n/oci-hpc-app-catalog/b/compute-hpc-rdma-auth-oel/c/oci-hpc-app-catalog/rpm/el8/x86_64/oci-cn-auth-1.0.0-1.el8.x86_64.rpm"
+  - "https://objectstorage.us-sanjose-1.oraclecloud.com/n/oci-hpc-app-catalog/b/compute-hpc-rdma-auth-oel/c/oci-hpc-app-catalog/rpm/el8/x86_64/oci-cn-auth-1.0.0-1.el8.x86_64.rpm"

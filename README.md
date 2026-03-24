@@ -4,11 +4,91 @@
 
 ## What this is
 
-This **OCI Resource Manager** stack builds a small **HPC-style cluster**: a **VCN** (new or existing), a **head VM** (Oracle Linux 8 by default), and a **cluster network** with **4× BM.Optimized3.36** bare metal nodes (RDMA). The bare metal nodes expect a **custom RHEL 8.8** image you import into OCI.
+This **OCI Resource Manager** / Terraform stack builds a small **HPC-style cluster**:
 
-**Time:** Creating the bare metal cluster network often takes **45–90+ minutes**. The head VM is created only after the cluster network is **RUNNING**.
+- A **VCN** (create new or use existing subnets).
+- A **head VM** (Oracle Linux 8 by default) for operations and optional Ansible.
+- A **compute cluster** with **bare metal** nodes (**BM.Optimized3.36** by default, count configurable). Nodes use a **custom RHEL** image you import into OCI.
 
-**Full detail** (every Terraform variable, outputs, Ansible troubleshooting, file layout): **[STACK-REFERENCE.md](STACK-REFERENCE.md)**.
+Bare metal provisioning is **slow** compared to VMs (often **tens of minutes per node**; allow **up to ~2 hours** in a busy region). The head VM is created **after** the bare metal instances exist when **Run Ansible from head** is enabled (Terraform waits so `user_data` can include BM private IPs).
+
+**Full detail** (variables, outputs, troubleshooting, file layout): **[STACK-REFERENCE.md](STACK-REFERENCE.md)**.
+
+---
+
+## Prerequisites
+
+Read this once before you deploy. Nothing here belongs in Git—use placeholders in docs and keep secrets in local files only (see **Secrets** below).
+
+### What you need in OCI
+
+| Item | Why |
+|------|-----|
+| **Tenancy + compartment** | All resources are created in a compartment you choose. |
+| **Networking** | Either let the stack create a VCN and subnets, or supply OCIDs for an **existing VCN**, **public subnet** (head), and **private subnet** (bare metal). |
+| **Custom RHEL image** | Bare metal nodes boot from a **RHEL** image you **import** (see Step 1). Match the stack variable for **BM image OCID**. |
+| **SSH public key** | OCI injects this at launch. You only ever need the **public** key in Terraform / the stack wizard—**never** commit private keys. |
+| **Bare metal capacity** | **BM.Optimized3.36** (or your chosen shape) must be available in the **availability domain** you use. If launches fail with **out of host capacity**, try another AD, a **capacity reservation**, fewer nodes, or retry later. |
+
+### IAM for the person running Terraform (API user or group)
+
+Whoever runs **Plan/Apply** (Resource Manager job owner, or `terraform` on a laptop) needs permission to manage the resources this stack creates—for example:
+
+- **Compute:** instances, images (read), optional compute cluster
+- **Networking:** VCN, subnets, gateways, route tables, security lists (if creating VCN)
+- **Identity (read):** availability domains
+
+Exact statements depend on your tenancy. A **starting point** (replace names in angle brackets) is:
+
+```text
+Allow group <your-terraform-admins> to manage instance-family in compartment <compartment_name>
+Allow group <your-terraform-admins> to use virtual-network-family in compartment <compartment_name>
+Allow group <your-terraform-admins> to manage compute-management-family in compartment <compartment_name>
+```
+
+Tighten or broaden to match your security standards. Resource Manager execution may use a **different** principal—grant the same ideas to the RM-managed **resource** principal or service if your org requires it.
+
+### Optional: “Run Ansible from head at first boot”
+
+If you set **`run_ansible_from_head = true`**, the head node’s **cloud-init** unpacks the **`playbooks/`** tree to **`/opt/oci-hpc-ansible`** and runs **`configure-rhel-rdma.yml`**. That path uses the **OCI CLI** with **instance principal** (no API key on disk).
+
+**You must configure this in IAM before relying on it:**
+
+1. **Dynamic group** — Identity → Domains → Dynamic groups → **Create**. Matching rule (use your **compartment OCID**):
+
+   ```text
+   ALL { instance.compartment.id = '<your_compartment_ocid>' }
+   ```
+
+   Narrow the rule (tags, name patterns) if policy allows.
+
+2. **Policies** for that dynamic group — attach in the compartment or tenancy (replace `<dynamic_group_name>` and `<compartment_name>`):
+
+   ```text
+   Allow dynamic-group <dynamic_group_name> to read instance-family in compartment <compartment_name>
+   Allow dynamic-group <dynamic_group_name> to use virtual-network-family in compartment <compartment_name>
+   ```
+
+   If `list-vnics` / inventory discovery still fails, add the broader pattern used in [oracle-quickstart/oci-hpc](https://github.com/oracle-quickstart/oci-hpc) (e.g. **manage compute-management-family** in that compartment) or, only for labs, a scoped **manage all-resources** in that compartment.
+
+3. **Red Hat subscriptions** — For RHEL on the bare metal nodes, provide **RHSM** credentials (stack variables or a local `secrets.auto.tfvars` file). The head can stay on **Oracle Linux** and does not need RHSM for itself.
+
+4. **First boot only** — OCI **`user_data`** runs on the instance’s **first boot**. If you change **`run_ansible_from_head`** or the embedded playbooks, **replace the head instance** (e.g. `terraform apply -replace=oci_core_instance.head_node`) so cloud-init runs again.
+
+5. **Metadata size limit** — Instance metadata is capped at **32 KB**. This stack **does not** ship the large legacy **`site.yml`** in the embedded zip so the bundle stays under the limit. The playbook you run is **`configure-rhel-rdma.yml`**.
+
+**Logs on the head:** `/var/log/oci-hpc-ansible-bootstrap.log`
+
+### Secrets (do not push to GitHub)
+
+These file names are in **`.gitignore`**—keep them local:
+
+| File | Purpose |
+|------|---------|
+| **`terraform.tfvars`** | Your OCIDs, region, flags—copy from **`terraform.tfvars.example`**. |
+| **`secrets.auto.tfvars`** | RHSM password and other secrets (Terraform loads `*.auto.tfvars` automatically). |
+
+Commit **only** `terraform.tfvars.example` (placeholders). Rotate any credential that was ever pasted into a tracked file by mistake.
 
 ---
 
@@ -108,6 +188,8 @@ data = "blacklist nvme_tcp\nblacklist nvme_fabrics\ninstall nvme_tcp /bin/false\
 
 Use the image **OCID** in **Step 3**.
 
+A matching Image Builder blueprint is also in the repo as **`oci_8.8_baremetal.toml`** (same content as the collapsible example above).
+
 </details>
 
 ---
@@ -134,10 +216,10 @@ Console path: **Resource Manager → Stacks → Create stack**.
 
 **Optional**
 
-- **Use existing VCN** — set the option and paste **VCN**, **public subnet**, and **private subnet** OCIDs. Optional **cluster network availability domain** (e.g. `Uocm:PHX-AD-1`) if the cluster network goes **TERMINATED** immediately — see [STACK-REFERENCE.md — Troubleshooting](STACK-REFERENCE.md#terraform-errors).
-- **Run Ansible from head at first boot** = **true** — set **RHSM username/password** for the BMs. The head uses a **Terraform-generated SSH key** (already on the BMs) to run Ansible—no separate private-key variable. Add the head to a **dynamic group** and grant **instance principal** policies; full steps → **[STACK-REFERENCE.md — Run Ansible from head](STACK-REFERENCE.md#run-ansible-from-head-node-resource-manager)**.
+- **Use existing VCN** — set the option and paste **VCN**, **public subnet**, and **private subnet** OCIDs. Optional **BM / compute cluster availability domain** (e.g. `pILZ:PHX-AD-2`) if bare metal hits **capacity** errors in the default AD — see [STACK-REFERENCE.md — Troubleshooting](STACK-REFERENCE.md#terraform-errors).
+- **Run Ansible from head at first boot** = **true** — set **RHSM username/password** for the BMs (or use **`secrets.auto.tfvars`**). The head uses a **Terraform-generated SSH key** (already on the BMs) to run Ansible—no separate private-key variable. You still need the **dynamic group** and **instance principal** policies described under **Prerequisites** above; more detail → **[STACK-REFERENCE.md — Run Ansible from head](STACK-REFERENCE.md#run-ansible-from-head-node-resource-manager)**.
 
-**If something fails:** cluster network apply timeout → increase **Cluster network create timeout** (e.g. `2h`). Empty Ansible BM inventory or BM data source errors → try **BM pool ready wait** (e.g. `15m`).
+**If something fails:** bare metal **create timeout** → increase **BM instance create timeout** (variable label may still say “cluster network”; e.g. `2h`). Empty Ansible **`[bm]`** inventory → increase **BM pool ready wait** (e.g. `15m`) or confirm **`user_data`** was applied (replace head after enabling Ansible).
 
 **All variable names, types, and defaults** → **[STACK-REFERENCE.md](STACK-REFERENCE.md#terraform-variables)**.
 
@@ -167,6 +249,7 @@ If you enabled Ansible from the head, check on the head: **`/var/log/oci-hpc-ans
 
 | Document | Contents |
 |----------|----------|
+| **This README** | Overview, **prerequisites** (IAM, capacity, secrets), high-level steps |
 | **[STACK-REFERENCE.md](STACK-REFERENCE.md)** | Terraform variables, deployment zip, outputs, Ansible-from-head, playbook notes, file tree, customization |
 | **[OCI-RESOURCE-MANAGER-GUIDE.md](OCI-RESOURCE-MANAGER-GUIDE.md)** | Deploy button, `schema.yaml`, Resource Manager behavior, **desktop Terraform (Windows)** |
 
@@ -174,7 +257,8 @@ If you enabled Ansible from the head, check on the head: **`/var/log/oci-hpc-ans
 
 ## References
 
-- [OCI HPC cluster network](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/hpc-cluster-network.htm)
+- [OCI compute clusters](https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeclusters.htm)
+- [OCI HPC cluster network](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/hpc-cluster-network.htm) (related; this stack uses **compute cluster + instances** by default)
 - [OCI Resource Manager](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/resourcemanager.htm)
 - [RDMA on OCI](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/hpc-rdma.htm)
 - [Import custom image](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/importingcustomimage.htm)

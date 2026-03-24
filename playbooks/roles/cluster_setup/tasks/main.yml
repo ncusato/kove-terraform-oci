@@ -1,6 +1,7 @@
 ---
 # Cluster-wide: /etc/hosts and passwordless SSH for all nodes.
 # Use each host's SSH user (ansible_user from inventory) so head=opc and BM=cloud-user both work.
+# Preserves existing authorized_keys (e.g. Terraform ssh_authorized_keys) and appends cluster RSA keys.
 
 - name: Set cluster SSH user fact (per-host; prefer inventory ansible_user over global cluster_ssh_user)
   ansible.builtin.set_fact:
@@ -33,23 +34,44 @@
   ansible.builtin.set_fact:
     cluster_ssh_pubkey: "{{ _ssh_pubkey_slurp.content | b64decode | trim }}"
 
-- name: Build authorized_keys with all cluster nodes' public keys
-  ansible.builtin.set_fact:
-    _authorized_keys_content: "{{ groups['all'] | map('extract', hostvars) | selectattr('cluster_ssh_pubkey', 'defined') | map(attribute='cluster_ssh_pubkey') | join('\n') }}"
+- name: Stat existing authorized_keys (Terraform / cloud-init keys)
+  ansible.builtin.stat:
+    path: "/home/{{ _cluster_user }}/.ssh/authorized_keys"
+  register: _auth_stat
 
-- name: Deploy authorized_keys for passwordless SSH
+- name: Slurp existing authorized_keys
+  ansible.builtin.slurp:
+    src: "/home/{{ _cluster_user }}/.ssh/authorized_keys"
+  register: _existing_auth_slurp
+  when: _auth_stat.stat.exists
+
+- name: Parse existing authorized key lines
+  ansible.builtin.set_fact:
+    _existing_key_lines: "{{ ((_existing_auth_slurp.content | b64decode).splitlines() | map('trim') | reject('equalto', '') | reject('match', '^#') | list) }}"
+  when: _auth_stat.stat.exists
+
+- name: No pre-existing authorized_keys lines
+  ansible.builtin.set_fact:
+    _existing_key_lines: []
+  when: not _auth_stat.stat.exists
+
+- name: Build authorized_keys (existing + every host's cluster RSA pubkey, deduped)
+  ansible.builtin.set_fact:
+    _authorized_keys_content: >-
+      {{
+        (
+          (_existing_key_lines | default([]))
+          + (groups['all'] | map('extract', hostvars) | selectattr('cluster_ssh_pubkey', 'defined') | map(attribute='cluster_ssh_pubkey') | list)
+        ) | map('trim') | reject('equalto', '') | unique | join('\n')
+      }}
+
+- name: Deploy authorized_keys for passwordless SSH (keeps login keys)
   ansible.builtin.copy:
     dest: "/home/{{ _cluster_user }}/.ssh/authorized_keys"
-    content: "{{ _authorized_keys_content }}"
+    content: "{{ _authorized_keys_content }}\n"
     owner: "{{ _cluster_user }}"
     group: "{{ _cluster_user }}"
     mode: "0600"
 
-- name: Ensure /etc/hosts has entry for each cluster node
-  ansible.builtin.lineinfile:
-    path: /etc/hosts
-    line: "{{ hostvars[item].ansible_host }} {{ item }}{{ ' headnode' if item == 'head-node' else '' }}"
-    state: present
-    create: true
-  loop: "{{ groups['all'] }}"
-  when: hostvars[item] is defined and hostvars[item].ansible_host is defined
+- name: Add cluster lines to /etc/hosts
+  ansible.builtin.import_tasks: etc_hosts.yml

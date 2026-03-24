@@ -20,6 +20,10 @@ variableGroups:
       - existing_public_subnet_id
       - existing_private_subnet_id
       - cluster_network_availability_domain
+      - use_compute_agent
+      - cluster_display_name_prefix
+      - bm_capacity_reservation_id
+      - bm_generic_platform_config
       - bm_boot_volume_size_gbs
       - cluster_network_create_timeout
 
@@ -116,22 +120,49 @@ variables:
 
   cluster_network_availability_domain:
     type: string
-    title: "Cluster network availability domain (optional)"
-    description: "AD name for BM fleet, e.g. Uocm:PHX-AD-1. Must support BM.Optimized3.36. Leave empty to use tenancy first AD; set if cluster network goes TERMINATED immediately."
+    title: "BM / compute cluster availability domain (optional)"
+    description: "Placement AD for compute cluster and BM instances. Leave empty to use the private subnet's AD when AD-specific, else first tenancy AD."
     required: false
+
+  use_compute_agent:
+    type: boolean
+    title: "Oracle HPC compute agent (RDMA plugins)"
+    description: "Matches oci-hpc use_compute_agent. Disable for custom RHEL if BM launch fails; use Ansible for RDMA when false."
+    default: true
+    required: true
+
+  cluster_display_name_prefix:
+    type: string
+    title: "Cluster name prefix"
+    description: "Prefix for compute cluster, BM instances, and head display names (e.g. kove, bm2)."
+    default: "bm"
+    required: false
+
+  bm_capacity_reservation_id:
+    type: string
+    title: "BM capacity reservation OCID (optional)"
+    description: "Leave empty unless your tenancy requires a capacity reservation for bare metal; required for some BM.Optimized3 launches."
+    required: false
+
+  bm_generic_platform_config:
+    type: boolean
+    title: "GENERIC_BM platform config"
+    description: "Adds oci-hpc-style GENERIC_BM platform_config. BM.Optimized3 compute-cluster launches often require false (400 unsupported platform configuration)."
+    default: false
+    required: true
 
   bm_boot_volume_size_gbs:
     type: number
     title: "BM boot volume size (GB)"
-    description: "Boot volume size for BM instance configuration. Default 120; increase if image requires more space."
+    description: "Boot volume size for BM instances. Default 120; increase if image requires more space."
     default: 120
     required: false
 
   cluster_network_create_timeout:
     type: string
-    title: "Cluster network create timeout"
-    description: "Max wait for BM cluster network to reach RUNNING (e.g. 90m, 2h). Increase if provisioning times out; BM capacity can take 45–90+ min."
-    default: "90m"
+    title: "BM instance create timeout"
+    description: "Max wait per BM instance create. Empty defaults to 2h. (Kept variable name for existing stacks.)"
+    default: ""
     required: false
 
   run_ansible_from_head:
@@ -143,8 +174,8 @@ variables:
 
   bm_pool_ready_wait:
     type: string
-    title: "Wait after cluster network (Ansible)"
-    description: "Delay after BM cluster network is RUNNING before reading BM IPs from the instance pool (e.g. 10m, 15m). Increase if apply fails on BM instances or inventory has empty [bm]."
+    title: "Wait after BM instances (Ansible)"
+    description: "Delay after BM instances exist before creating the head node (e.g. 10m). Increase if bootstrap user_data lacks private IPs or inventory [bm] is empty."
     default: "10m"
     required: false
 
@@ -189,4 +220,10 @@ outputs:
     visible: true
   bm_node_private_ips:
     title: "BM Node Private IPs"
+    visible: true
+  bm_instance_ids:
+    title: "BM Instance OCIDs"
+    visible: true
+  compute_cluster_id:
+    title: "Compute Cluster OCID"
     visible: true

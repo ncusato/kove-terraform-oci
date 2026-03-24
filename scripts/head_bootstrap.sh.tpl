@@ -8,9 +8,9 @@ do_bootstrap() {
   exec >> "$LOG" 2>&1
   echo "$(date) B: go"
 
-  INSTANCE_POOL_ID="${instance_pool_id}"
   COMPARTMENT_ID="${compartment_id}"
   BM_COUNT=${bm_count}
+  BM_INSTANCE_OCIDS_CSV="${bm_instance_ocids_csv}"
   SSH_USER="${instance_ssh_user}"
   HEAD_SSH_USER="${head_node_ssh_user}"
   ANSIBLE_DIR="/opt/oci-hpc-ansible"
@@ -80,20 +80,13 @@ do_bootstrap() {
   rm -f /tmp/playbooks.zip
   echo "$EXTRA_VARS_B64" | base64 -d > "$ANSIBLE_DIR/extra_vars.yml"
 
-  if [ -z "$BM_PRIVATE_IPS_CSV" ]; then
-    echo "$(date) B: wait pool $BM_COUNT..."
-    for i in $(seq 1 90); do
-      N=$(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null | jq -r '.data | length' 2>/dev/null || echo "0")
-      N=$${N:-0}
-      if [ "$${N}" -eq "$BM_COUNT" ] 2>/dev/null; then
-        echo "$(date) B: found $BM_COUNT"
-        break
-      fi
-      echo "$(date) B: $${N}/$BM_COUNT..."
-      sleep 30
-    done
+  if [ -n "$BM_PRIVATE_IPS_CSV" ]; then
+    echo "$(date) B: TF private IPs"
+  elif [ -n "$BM_INSTANCE_OCIDS_CSV" ]; then
+    echo "$(date) B: TF instance OCIDs (resolve VNICs)"
   else
-    echo "$(date) B: TF IPs"
+    echo "$(date) B: ERROR no BM_PRIVATE_IPS_CSV or BM_INSTANCE_OCIDS_CSV" >&2
+    exit 1
   fi
 
   echo "$(date) B: inv..."
@@ -116,7 +109,9 @@ head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER ansible_connection=l
     echo "$(date) B: +$BM_ADDED BM" >> "$LOG"
   else
     i=1
-    for inst_id in $(oci compute-management instance-pool list-instances --instance-pool-id "$INSTANCE_POOL_ID" --compartment-id "$COMPARTMENT_ID" --all --query 'data[*].instanceId' --raw-output 2>/dev/null); do
+    for inst_id in $(echo "$BM_INSTANCE_OCIDS_CSV" | tr ',' ' '); do
+      inst_id=$(echo "$inst_id" | tr -d ' ')
+      [ -z "$inst_id" ] && continue
       PRIV_IP=""
       for _try in 1 2; do
         RAW=$(oci compute instance list-vnics --instance-id "$inst_id" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null) || true
@@ -157,7 +152,14 @@ bm" >> "$ANSIBLE_DIR/inventory/hosts"
   cd "$ANSIBLE_DIR"
   export ANSIBLE_HOST_KEY_CHECKING=False
   ANSIBLE_PLAYBOOK=$(command -v ansible-playbook 2>/dev/null || echo "/usr/local/bin/ansible-playbook")
-  $ANSIBLE_PLAYBOOK -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml || true
+  set +e
+  $ANSIBLE_PLAYBOOK -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml
+  _apb=$?
+  set -e
+  echo "$(date) B: ansible-playbook exit code: $_apb (0=ok)"
+  if [ "$_apb" -ne 0 ]; then
+    echo "$(date) B: WARNING fix failures and re-run: cd $ANSIBLE_DIR && $ANSIBLE_PLAYBOOK -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml"
+  fi
 
   echo "$(date) B: done"
 }

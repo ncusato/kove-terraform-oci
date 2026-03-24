@@ -35,15 +35,51 @@ variable "bm_node_count" {
   default     = 4
 }
 
+variable "cluster_display_name_prefix" {
+  type        = string
+  description = "Prefix for cluster network, pool, instance configuration, and head display names (change for a visibly distinct deployment)."
+  default     = "bm"
+}
+
+variable "bm_node_shape" {
+  type        = string
+  description = "Bare metal shape for cluster network nodes (must match capacity / image)."
+  default     = "BM.Optimized3.36"
+}
+
+variable "bm_capacity_reservation_id" {
+  type        = string
+  description = "Optional: BM compute capacity reservation OCID. Required in some tenancies for BM.Optimized3; leave empty if not using reservations."
+  default     = ""
+}
+
+variable "bm_generic_platform_config" {
+  type        = bool
+  description = "Set true to add oci-hpc-style GENERIC_BM platform_config. BM.Optimized3.36 on compute-cluster instances often rejects this (400); leave false unless OCI/documents require it for your shape."
+  default     = false
+}
+
+variable "bm_smt_enabled" {
+  type        = bool
+  description = "Symmetric multithreading for BM platform_config (oci-hpc default true)."
+  default     = true
+}
+
+variable "bm_numa_nodes_per_socket" {
+  type        = string
+  description = "NUMA nodes per socket for GENERIC_BM (oci-hpc uses NPS1 for GENERIC_BM)."
+  default     = "NPS1"
+}
+
 variable "cluster_network_create_timeout" {
   type        = string
-  description = "Max time to wait for the BM cluster network to reach RUNNING (e.g. 90m, 2h). Bare metal capacity can take 45–90+ minutes."
-  default     = "90m"
+  description = "Max wait for each BM instance create (compute cluster path). If empty, defaults to 2h. (Variable name kept for backward compatibility with existing tfvars.)"
+  default     = ""
 }
 
 variable "bm_pool_ready_wait" {
   type        = string
-  description = "Delay after cluster network is RUNNING before Terraform reads BM instance IDs from the instance pool (e.g. 10m, 15m). Increase if apply errors on BM data sources or bootstrap has empty [bm]."
+  description = "Extra delay after BM instances exist before creating the head node (lets VNICs stabilize before Terraform embeds private IPs in bootstrap user_data)."
   default     = "10m"
 }
 
@@ -77,8 +113,14 @@ variable "existing_private_subnet_id" {
 
 variable "cluster_network_availability_domain" {
   type        = string
-  description = "Optional: availability domain for BM cluster network (e.g. Uocm:PHX-AD-1). Must support BM.Optimized3.36. If empty, uses the tenancy's first AD — wrong AD often yields immediate TERMINATED."
+  description = "Optional: same role as oci-hpc `ad` for cluster network + instance configuration. If empty, uses the private subnet's AD when the subnet is AD-specific, otherwise first tenancy AD."
   default     = ""
+}
+
+variable "use_compute_agent" {
+  type        = bool
+  description = "oracle-quickstart/oci-hpc `use_compute_agent`: enable Oracle Cloud Agent HPC RDMA plugins on BM nodes. Set false for custom RHEL images that do not support these plugins (configure RDMA via Ansible instead)."
+  default     = true
 }
 
 variable "bm_boot_volume_size_gbs" {
@@ -98,7 +140,7 @@ variable "bm_boot_volume_size_gbs" {
 
 variable "run_ansible_from_head" {
   type        = bool
-  description = "If true, head node user_data runs Ansible at first boot (instance principal required; see README)."
+  description = "If true, Terraform embeds ./playbooks as a zip in head user_data; cloud-init runs scripts/head_bootstrap.sh.tpl which unpacks to /opt/oci-hpc-ansible and runs configure-rhel-rdma.yml. OCI runs user_data only on first boot—replace the head instance after changing this. Requires dynamic group + instance principal policies for OCI CLI from the head."
   default     = false
 }
 
