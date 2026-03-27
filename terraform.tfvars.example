@@ -21,8 +21,8 @@ existing_private_subnet_id = "ocid1.subnet.oc1.phx.aaaaaaaa..."
 # Optional: one AD for head + BMs (e.g. "pILZ:PHX-AD-2"). When set, overrides cluster_network_availability_domain for BMs.
 availability_domain = ""
 cluster_network_availability_domain = ""
-# oci-hpc parity: false if custom RHEL + pool shows "Launched 0 of N" (HPC agent plugins); keep true for Oracle Linux HPC images.
-use_compute_agent = true
+# oci-hpc parity: default off in this stack (custom RHEL + Ansible for RDMA). Set true only if you need Oracle HPC compute agent plugins.
+use_compute_agent = false
 
 cluster_display_name_prefix  = "bm"
 bm_capacity_reservation_id   = ""

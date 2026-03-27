@@ -138,7 +138,7 @@ variable "cluster_network_availability_domain" {
 variable "use_compute_agent" {
   type        = bool
   description = "oracle-quickstart/oci-hpc `use_compute_agent`: enable Oracle Cloud Agent HPC RDMA plugins on BM nodes. Set false for custom RHEL images that do not support these plugins (configure RDMA via Ansible instead)."
-  default     = true
+  default     = false
 }
 
 variable "bm_imds_ssh_key_bootstrap" {

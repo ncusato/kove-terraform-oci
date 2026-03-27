@@ -1,6 +1,6 @@
 title: "Kove Infra Build on OCI"
 description: "Kove infra: head node plus bare metal RHEL 8.8 workers (BM.Optimized3.36 by default) on OCI."
-informationalText: "Provide one RHEL 8.8 image OCID for BM nodes. Use Oracle Linux for the head when head image is left empty. **Run Ansible from head** defaults to **Yes**: cloud-init installs playbooks under /opt/oci-hpc-ansible on first boot (set No only if you will run Ansible manually). You still need dynamic-group instance-principal policies and RHSM for RHEL BMs. If that folder is missing, the head was created with Ansible off—turn it on and replace the head instance, then Apply again. Tenancy/region are pre-filled. Zip source: Git tag Kove-RHEL88-OCI."
+informationalText: "Provide one RHEL 8.8 image OCID for BM nodes. Use Oracle Linux for the head when head image is left empty. **Run Ansible from head** defaults to **Yes**: cloud-init installs playbooks under /opt/oci-hpc-ansible on first boot (set No only if you will run Ansible manually). You still need dynamic-group instance-principal policies and RHSM for RHEL BMs (set RHSM in `terraform.tfvars` / `secrets.auto.tfvars` when using the Terraform CLI, or extend the stack configuration if your workflow supports it). If `/opt/oci-hpc-ansible` is missing, the head was created with Ansible off—turn it on and replace the head instance, then Apply again."
 schemaVersion: 1.1.0
 version: "20190304"
 locale: "en"
@@ -16,10 +16,6 @@ variableGroups:
   - title: "Ansible from head (recommended)"
     variables:
       - run_ansible_from_head
-      - bm_pool_ready_wait
-      - instance_ssh_user
-      - rhsm_username
-      - rhsm_password
 
   - title: "Networking"
     variables:
@@ -29,7 +25,6 @@ variableGroups:
       - existing_private_subnet_id
       - availability_domain
       - cluster_network_availability_domain
-      - use_compute_agent
       - bm_imds_ssh_key_bootstrap
       - create_vnc
       - bm_capacity_reservation_id
@@ -150,8 +145,9 @@ variables:
     type: boolean
     title: "Oracle HPC compute agent (RDMA plugins)"
     description: "Matches oci-hpc use_compute_agent. Disable for custom RHEL if BM launch fails; use Ansible for RDMA when false."
-    default: true
+    default: false
     required: true
+    visible: false
 
   bm_imds_ssh_key_bootstrap:
     type: boolean
@@ -215,6 +211,7 @@ variables:
     description: "Delay after BM instances exist before creating the head node (e.g. 10m). Increase if bootstrap user_data lacks private IPs or inventory [bm] is empty."
     default: "10m"
     required: false
+    visible: false
 
   instance_ssh_user:
     type: string
@@ -222,6 +219,7 @@ variables:
     description: "Ansible SSH user for bare metal nodes. Default cloud-user for this RHEL image flow."
     default: "cloud-user"
     required: false
+    visible: false
 
   head_node_ssh_user:
     type: string
@@ -236,17 +234,27 @@ variables:
     title: "RHSM username"
     description: "Red Hat Subscription Manager username (when Run Ansible from head is true)."
     required: false
+    visible: false
 
   rhsm_password:
     type: string
     title: "RHSM password"
     description: "Red Hat Subscription Manager password (when Run Ansible from head is true)."
     required: false
+    visible: false
 
   rdma_ping_target:
     type: string
     title: "RDMA ping target IP"
     description: "Optional IP for RDMA ping check (e.g. another BM node's RDMA interface)."
+    required: false
+    visible: false
+
+  bm_numa_nodes_per_socket:
+    type: string
+    title: "BM NUMA nodes per socket"
+    description: "NUMA nodes per socket for GENERIC_BM platform config (oci-hpc uses NPS1 for GENERIC_BM)."
+    default: "NPS1"
     required: false
     visible: false
 
