@@ -22,7 +22,7 @@ On the **head node**, open the **README in the default SSH user’s home directo
 cat ~/README.md
 ```
 
-That file summarizes how to verify **RDMA re-auth** on the bare metal nodes (timer, script, rerun playbook). The same checks are also in the main **[README.md](README.md)** under **Steps → Step 5**.
+That file summarizes how to verify **RDMA re-auth** on the bare metal nodes (timer, script, rerun playbook). The same checks are also in **[README.md, Step 5](README.md#step-5-log-in-and-verify)**.
 
 ## The custom RHEL image fails to launch (404 / not found)
 

@@ -300,6 +300,7 @@ sudo tail -n 100 /var/log/oci-cn-auth-cron.log
 
 ### External links
 
+- [Oracle Quick Starts HPC repository](https://github.com/oracle-quickstart/oci-hpc)
 - [OCI compute clusters](https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeclusters.htm)
 - [OCI HPC cluster network](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/hpc-cluster-network.htm) (related; this stack uses **compute cluster + instances** by default)
 - [OCI Resource Manager](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/resourcemanager.htm)
