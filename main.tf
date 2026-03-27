@@ -338,10 +338,11 @@ resource "oci_core_instance" "head_node" {
     { ssh_authorized_keys = local.cluster_ssh_authorized_keys },
     {
       user_data = base64encode(replace(replace(templatefile("${path.module}/scripts/cloud_init_head.yaml.tpl", {
-        run_bootstrap        = var.run_ansible_from_head
-        bootstrap_script_b64 = var.run_ansible_from_head ? base64encode(replace(replace(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars), "\r\n", "\n"), "\r", "\n")) : ""
-        authorized_keys_b64  = base64encode(local.cluster_ssh_authorized_keys)
-        head_ssh_user        = trimspace(var.head_node_ssh_user) != "" ? trimspace(var.head_node_ssh_user) : "opc"
+        run_bootstrap         = var.run_ansible_from_head
+        bootstrap_script_b64  = var.run_ansible_from_head ? base64encode(replace(replace(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars), "\r\n", "\n"), "\r", "\n")) : ""
+        authorized_keys_b64   = base64encode(local.cluster_ssh_authorized_keys)
+        head_ssh_user         = trimspace(var.head_node_ssh_user) != "" ? trimspace(var.head_node_ssh_user) : "opc"
+        head_home_readme_b64  = base64encode(replace(replace(file("${path.module}/docs/HEAD-NODE-HOME-README.md"), "\r\n", "\n"), "\r", "\n"))
       }), "\r\n", "\n"), "\r", "\n"))
     }
   )
