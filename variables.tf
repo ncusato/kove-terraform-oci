@@ -125,13 +125,7 @@ variable "existing_private_subnet_id" {
 
 variable "availability_domain" {
   type        = string
-  description = "Optional: single AD for the whole stack (head VM + compute cluster + BM instances), e.g. pILZ:PHX-AD-2. When set, overrides subnet-derived AD and cluster_network_availability_domain for placement. Must be valid for your subnets (regional subnets) or match AD-specific subnets."
-  default     = ""
-}
-
-variable "cluster_network_availability_domain" {
-  type        = string
-  description = "Optional: AD for compute cluster and BM instances when availability_domain is empty. Same role as oci-hpc `ad`. If empty, uses the private subnet's AD when AD-specific, else first tenancy AD."
+  description = "Optional: single availability domain for the entire cluster (head VM, compute cluster, bare metal). OCI name, e.g. pILZ:PHX-AD-2. Leave empty to derive one AD from subnets (private, then public), else the tenancy's first AD."
   default     = ""
 }
 

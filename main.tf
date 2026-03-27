@@ -237,16 +237,14 @@ locals {
   private_subnet_ad = var.use_existing_vcn ? try(trimspace(data.oci_core_subnet.existing_private[0].availability_domain), "") : try(trimspace(oci_core_subnet.private[0].availability_domain), "")
   public_subnet_ad  = var.use_existing_vcn ? try(trimspace(data.oci_core_subnet.existing_public[0].availability_domain), "") : try(trimspace(oci_core_subnet.public[0].availability_domain), "")
   stack_ad          = trimspace(var.availability_domain)
-  # Head: explicit stack AD, else public subnet AD, else first tenancy AD.
-  head_node_ad = length(local.stack_ad) > 0 ? local.stack_ad : (
-    length(trimspace(local.public_subnet_ad)) > 0 ? local.public_subnet_ad : local.ad_name
-  )
-  # BM / compute cluster: explicit stack AD, else cluster_network_availability_domain, else private subnet AD, else first tenancy AD.
-  cluster_network_ad = length(local.stack_ad) > 0 ? local.stack_ad : (
-    length(trimspace(var.cluster_network_availability_domain)) > 0 ? var.cluster_network_availability_domain : (
-      length(local.private_subnet_ad) > 0 ? local.private_subnet_ad : local.ad_name
+  # Single AD for head VM + compute cluster + BMs. Explicit var wins; else one shared fallback (private subnet, then public, then first tenancy AD).
+  cluster_ad = length(local.stack_ad) > 0 ? local.stack_ad : (
+    length(local.private_subnet_ad) > 0 ? local.private_subnet_ad : (
+      length(local.public_subnet_ad) > 0 ? local.public_subnet_ad : local.ad_name
     )
   )
+  head_node_ad       = local.cluster_ad
+  cluster_network_ad = local.cluster_ad
 
   # BM instance create (compute cluster path); same knob as former cluster-network wait.
   bm_instance_create_timeout = trimspace(var.cluster_network_create_timeout) != "" ? var.cluster_network_create_timeout : "2h"

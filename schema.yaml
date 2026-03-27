@@ -24,7 +24,6 @@ variableGroups:
       - existing_public_subnet_id
       - existing_private_subnet_id
       - availability_domain
-      - cluster_network_availability_domain
 
   - title: "Optional Naming"
     variables:
@@ -124,16 +123,12 @@ variables:
       vcnId: ${existing_vcn_id}
 
   availability_domain:
-    type: string
-    title: "Stack availability domain (recommended)"
-    description: "Single AD for head VM and BM compute cluster (e.g. pILZ:PHX-AD-2). When set, overrides subnet-derived placement and BM-only cluster_network_availability_domain. Leave empty to derive from subnets."
+    type: oci:identity:availabilitydomain:name
+    title: "Availability domain"
+    description: "Where to run the head VM and all bare metal nodes (one AD for the whole cluster). Leave unselected to pick automatically from your subnets."
     required: false
-
-  cluster_network_availability_domain:
-    type: string
-    title: "BM availability domain (optional fallback)"
-    description: "Used only when Stack availability domain is empty. Placement AD for compute cluster and BM instances; else private subnet AD or first tenancy AD."
-    required: false
+    dependsOn:
+      compartmentId: ${compartment_ocid}
 
   use_compute_agent:
     type: boolean

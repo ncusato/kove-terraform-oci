@@ -16,7 +16,7 @@ This document supplements the **[README](README.md)** with Terraform **variable*
 
 ### Compared to [aeron-terraform-oci](https://github.com/ncusato/aeron-terraform-oci)
 
-That stack deploys **regular flex VMs** via **`oci_core_instance`** with explicit **`controller_ad`** / **`benchmark_ad`** ? no **`oci_core_cluster_network`**, no **BM.Optimized3.36**, no RDMA island. VM instances usually reach **RUNNING** in minutes, so Terraform rarely times out. **This stack** provisions an **HPC bare metal cluster network** (different Compute API); **PROVISIONING** for 30?120+ minutes is normal OCI behavior, not something you fix by copying Aeron?s `compute.tf`. Use a long enough **`cluster_network_create_timeout`** and confirm **`cluster_network_availability_domain`** (same idea as Aeron?s required AD vars) matches where your private subnet and shape are supported.
+That stack deploys **regular flex VMs** via **`oci_core_instance`** with explicit **`controller_ad`** / **`benchmark_ad`** ? no **`oci_core_cluster_network`**, no **BM.Optimized3.36**, no RDMA island. VM instances usually reach **RUNNING** in minutes, so Terraform rarely times out. **This stack** provisions an **HPC bare metal cluster network** (different Compute API); **PROVISIONING** for 30?120+ minutes is normal OCI behavior, not something you fix by copying Aeron?s `compute.tf`. Use a long enough **`cluster_network_create_timeout`** and set **`availability_domain`** when you need the whole cluster in an AD that supports this shape and your subnets.
 
 ---
 
@@ -55,7 +55,7 @@ That stack deploys **regular flex VMs** via **`oci_core_instance`** with explici
 | `existing_vcn_id` | String | "" | Existing VCN OCID (required if `use_existing_vcn = true`) |
 | `existing_public_subnet_id` | String | "" | Existing public subnet OCID for head node |
 | `existing_private_subnet_id` | String | "" | Existing private subnet OCID for BM nodes |
-| `cluster_network_availability_domain` | String | "" | Same role as oci-hpc **`ad`**; empty = first tenancy AD |
+| `availability_domain` | String | "" | Single AD for head + compute cluster + BMs; empty = derive from subnets (private, then public), else first tenancy AD |
 | `bm_boot_volume_size_gbs` | Number | 120 | BM boot volume size in GB |
 | `cluster_network_create_timeout` | String | "" | Empty = **max(oci-hpc formula, 120m)**. Set e.g. `180m` if still timing out. |
 
@@ -65,6 +65,8 @@ That stack deploys **regular flex VMs** via **`oci_core_instance`** with explici
 - Private subnet CIDR: 10.0.2.0/24
 
 **Cluster network placement** uses **`primary_vnic_subnets` only** (private subnet). OCI **CreateClusterNetwork** for **BM.Optimized3.36** rejects any **`secondary_vnic_subnets`** (`400-InvalidParameter`: *0 secondaryVnicsSubnets* required) ? same idea as [oci-hpc](https://github.com/oracle-quickstart/oci-hpc) `primary_subnet_id`?only placement.
+
+Older tfvars may list **`cluster_network_availability_domain`**; that variable was removed—use **`availability_domain`** only (one AD for the entire cluster).
 
 ### Ansible from head (Resource Manager)
 
@@ -401,7 +403,7 @@ The project includes two Ansible roles that can be used independently:
 
 Common causes:
 
-1. **Wrong availability domain** ? `BM.Optimized3.36` fleet hardware exists only in specific ADs per region. The stack defaults to the **first AD** returned for the tenancy; in Phoenix and other regions that may not support this shape's cluster network. Set **`cluster_network_availability_domain`** to an AD that supports cluster networks (Console: create flow or capacity report; name looks like `Uocm:PHX-AD-1`).
+1. **Wrong availability domain** ? `BM.Optimized3.36` fleet hardware exists only in specific ADs per region. If you leave **`availability_domain`** unset, the stack derives an AD from subnets or the tenancy list; that default may not support this shape's cluster network. Set **`availability_domain`** to an AD that supports cluster networks (Console: create flow or capacity report; name looks like `Uocm:PHX-AD-1`).
 2. **Placement networking** ? Do **not** set `secondary_vnic_subnets` for this shape; OCI returns **`400-InvalidParameter`** (*There should be 0 secondaryVnicsSubnets specified*). Use **`primary_vnic_subnets`** only (private subnet), matching [oci-hpc](https://github.com/oracle-quickstart/oci-hpc) cluster network placement.
 3. **Instance configuration** ? The template uses **`source = "NONE"`** (oci-hpc style), explicit **boot volume** size, **OS Management Service Agent** disabled, and **RDMA** plugins enabled. A **custom image** must still be **compatible** with `BM.Optimized3.36` and cluster networking; see OCI work request / service logs in the Console for the exact error.
 4. **Image** ? Oracle's docs often reference the **Oracle Linux HPC** marketplace image for cluster networks; custom **RHEL** images can work but must meet OCI requirements for BM + RDMA.

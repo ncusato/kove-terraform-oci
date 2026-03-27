@@ -4,7 +4,7 @@
 
 Bare metal capacity is **regional and per availability domain (AD)**. Try:
 
-- **Another AD** — set **cluster network / BM availability domain** (or equivalent) to a different AD in the same region if your shape is offered there.
+- **Another AD** — set **availability domain** to a different AD in the same region if your shape is offered there (or leave it unset and rely on subnet placement).
 - **Another region** — if your workload allows it, deploy where **BM.Optimized3** (or your chosen shape) has capacity.
 - **Retry later** — capacity frees up as other customers release hosts.
 - **Fewer nodes** — temporarily reduce the BM count to get a successful create, then scale later if your process allows.
@@ -45,7 +45,3 @@ Bare metal can take **45–90+ minutes** per node in busy regions. Increase **BM
 ## Where is the full variable list and troubleshooting?
 
 See **[STACK-REFERENCE.md](STACK-REFERENCE.md)** and **[OCI-RESOURCE-MANAGER-GUIDE.md](OCI-RESOURCE-MANAGER-GUIDE.md)**.
-
-## Resource Manager still shows old variables (cluster prefix, BM timeouts, HPC agent text, etc.)
-
-The console wizard uses the **`schema.yaml` inside the zip that was used when the stack was created** (or last uploaded). It does **not** auto-sync when the GitHub repo changes. **Create a new stack** from a fresh zip, or **edit the stack** and **replace the Terraform configuration** with an archive built from the current repository. The README **Deploy** button downloads **`master`** (latest commit). If you pin a stack to some other ref (for example a **Git tag**), that ref must include the `schema.yaml` you expect. See **[OCI-RESOURCE-MANAGER-GUIDE.md](OCI-RESOURCE-MANAGER-GUIDE.md)** (section *When the console UI does not match the latest `schema.yaml`*).

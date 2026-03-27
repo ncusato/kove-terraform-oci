@@ -230,7 +230,7 @@ Include the Terraform files, **`schema.yaml`**, **`scripts/`**, **`playbooks/`**
 
 **Optional**
 
-- **Use existing VCN** — set the option and paste **VCN**, **public subnet**, and **private subnet** OCIDs. Optional **BM / compute cluster availability domain** (e.g. `pILZ:PHX-AD-2`) if bare metal hits **capacity** errors in the default AD — see [STACK-REFERENCE.md — Troubleshooting](STACK-REFERENCE.md#terraform-errors).
+- **Use existing VCN** — set the option and paste **VCN**, **public subnet**, and **private subnet** OCIDs. Optional **availability domain** (single AD for the whole cluster) if you need to steer away from **capacity** errors — see [STACK-REFERENCE.md — Troubleshooting](STACK-REFERENCE.md#terraform-errors).
 
 **Ansible (defaults to on in the wizard)**
 

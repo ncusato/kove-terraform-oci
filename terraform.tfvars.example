@@ -18,9 +18,8 @@ existing_vcn_id            = "ocid1.vcn.oc1.phx.aaaaaaaa..."
 existing_public_subnet_id  = "ocid1.subnet.oc1.phx.aaaaaaaa..."
 existing_private_subnet_id = "ocid1.subnet.oc1.phx.aaaaaaaa..."
 
-# Optional: one AD for head + BMs (e.g. "pILZ:PHX-AD-2"). When set, overrides cluster_network_availability_domain for BMs.
+# Optional: one AD for entire cluster (e.g. "pILZ:PHX-AD-2"). Empty = derive from subnets.
 availability_domain = ""
-cluster_network_availability_domain = ""
 # oci-hpc parity: default off in this stack (custom RHEL + Ansible for RDMA). Set true only if you need Oracle HPC compute agent plugins.
 use_compute_agent = false
 
