@@ -34,7 +34,8 @@
 
 - name: Pin RHEL release to 8.8
   ansible.builtin.command: subscription-manager release --set=8.8
-  changed_when: "'Release set to' in stdout"
+  register: sm_release_set
+  changed_when: "'Release set to' in (sm_release_set.stdout | default(''))"
 
 - name: Enable RHEL repos (BaseOS and AppStream)
   ansible.builtin.command: >

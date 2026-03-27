@@ -47,6 +47,11 @@ data "oci_core_subnet" "existing_private" {
   subnet_id = var.existing_private_subnet_id
 }
 
+data "oci_core_subnet" "existing_public" {
+  count     = var.use_existing_vcn ? 1 : 0
+  subnet_id = var.existing_public_subnet_id
+}
+
 locals {
   # Use the first AD by default
   ad_name = data.oci_identity_availability_domains.ads.availability_domains[0].name
@@ -77,14 +82,19 @@ resource "oci_core_virtual_network" "this" {
   count          = var.use_existing_vcn ? 0 : 1
   cidr_block     = "10.0.0.0/16"
   compartment_id = var.compartment_ocid
-  display_name   = "cluster-vcn"
-  dns_label      = "clustervcn"
+  display_name   = "${var.cluster_display_name_prefix}-vcn"
+  # OCI VCN dns_label: alphanumeric, max 15 chars (sanitize prefix; avoid regex* functions for older TF quirks).
+  dns_label = substr(
+    length(trimspace(replace(replace(lower(var.cluster_display_name_prefix), "-", ""), "_", ""))) > 0 ? replace(replace(lower(var.cluster_display_name_prefix), "-", ""), "_", "") : "clustervcn",
+    0,
+    15
+  )
 }
 
 resource "oci_core_internet_gateway" "this" {
   count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
-  display_name   = "cluster-igw"
+  display_name   = "${var.cluster_display_name_prefix}-igw"
   enabled        = true
   vcn_id         = oci_core_virtual_network.this[0].id
 }
@@ -92,14 +102,14 @@ resource "oci_core_internet_gateway" "this" {
 resource "oci_core_nat_gateway" "this" {
   count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
-  display_name   = "cluster-nat"
+  display_name   = "${var.cluster_display_name_prefix}-nat"
   vcn_id         = oci_core_virtual_network.this[0].id
 }
 
 resource "oci_core_route_table" "public" {
   count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
-  display_name   = "cluster-public-rt"
+  display_name   = "${var.cluster_display_name_prefix}-public-rt"
   vcn_id         = oci_core_virtual_network.this[0].id
 
   route_rules {
@@ -126,7 +136,7 @@ resource "oci_core_route_table" "private" {
 resource "oci_core_security_list" "public" {
   count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
-  display_name   = "cluster-public-sl"
+  display_name   = "${var.cluster_display_name_prefix}-public-sl"
   vcn_id         = oci_core_virtual_network.this[0].id
 
   egress_security_rules {
@@ -160,7 +170,7 @@ resource "oci_core_security_list" "public" {
 resource "oci_core_security_list" "private" {
   count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
-  display_name   = "cluster-private-sl"
+  display_name   = "${var.cluster_display_name_prefix}-private-sl"
   vcn_id         = oci_core_virtual_network.this[0].id
 
   egress_security_rules {
@@ -191,7 +201,7 @@ resource "oci_core_subnet" "public" {
 resource "oci_core_subnet" "private" {
   count                      = var.use_existing_vcn ? 0 : 1
   compartment_id             = var.compartment_ocid
-  display_name               = "cluster-private-subnet"
+  display_name               = "${var.cluster_display_name_prefix}-private-subnet"
   vcn_id                     = oci_core_virtual_network.this[0].id
   cidr_block                 = "10.0.2.0/24"
   route_table_id             = oci_core_route_table.private[0].id
@@ -207,9 +217,17 @@ locals {
   private_subnet_id = var.use_existing_vcn ? var.existing_private_subnet_id : oci_core_subnet.private[0].id
   # AD-specific subnet launches must use the subnet's AD or instance pool creation can stay at 0/N.
   private_subnet_ad = var.use_existing_vcn ? try(trimspace(data.oci_core_subnet.existing_private[0].availability_domain), "") : try(trimspace(oci_core_subnet.private[0].availability_domain), "")
-  # Same as oci-hpc `ad`: explicit override, else subnet AD if available, else first tenancy AD.
-  cluster_network_ad = length(trimspace(var.cluster_network_availability_domain)) > 0 ? var.cluster_network_availability_domain : (
-    length(local.private_subnet_ad) > 0 ? local.private_subnet_ad : local.ad_name
+  public_subnet_ad  = var.use_existing_vcn ? try(trimspace(data.oci_core_subnet.existing_public[0].availability_domain), "") : try(trimspace(oci_core_subnet.public[0].availability_domain), "")
+  stack_ad          = trimspace(var.availability_domain)
+  # Head: explicit stack AD, else public subnet AD, else first tenancy AD.
+  head_node_ad = length(local.stack_ad) > 0 ? local.stack_ad : (
+    length(trimspace(local.public_subnet_ad)) > 0 ? local.public_subnet_ad : local.ad_name
+  )
+  # BM / compute cluster: explicit stack AD, else cluster_network_availability_domain, else private subnet AD, else first tenancy AD.
+  cluster_network_ad = length(local.stack_ad) > 0 ? local.stack_ad : (
+    length(trimspace(var.cluster_network_availability_domain)) > 0 ? var.cluster_network_availability_domain : (
+      length(local.private_subnet_ad) > 0 ? local.private_subnet_ad : local.ad_name
+    )
   )
 
   # BM instance create (compute cluster path); same knob as former cluster-network wait.
@@ -220,6 +238,11 @@ locals {
     trimspace(replace(var.ssh_public_key, "\r", "")),
     chomp(trimspace(replace(tls_private_key.cluster_ssh.public_key_openssh, "\r", ""))),
   ]))
+
+  # Custom BM images: ensure stack SSH keys land on common users at first boot.
+  bm_user_data_b64 = var.bm_imds_ssh_key_bootstrap ? base64encode(replace(replace(templatefile("${path.module}/scripts/bm_imds_ssh_bootstrap.sh", {
+    stack_ssh_authorized_keys_b64 = base64encode(local.cluster_ssh_authorized_keys)
+  }), "\r\n", "\n"), "\r", "\n")) : ""
 }
 
 # Single zip of playbooks to stay under OCI metadata limit (32KB). Only used when run_ansible_from_head = true.
@@ -229,33 +252,32 @@ data "archive_file" "playbooks" {
   type        = "zip"
   source_dir  = "${path.module}/playbooks"
   output_path = "${path.module}/.terraform/playbooks.zip"
-  excludes    = ["site.yml"]
+  excludes    = ["site.yml", "inventory/hosts.sample"]
 }
 
 # Bootstrap script inputs (only used when run_ansible_from_head = true)
 locals {
-  extra_vars_yaml       = <<-EOT
+  extra_vars_yaml    = <<-EOT
 rhsm_username: ${jsonencode(var.rhsm_username)}
 rhsm_password: ${jsonencode(var.rhsm_password)}
 rdma_ping_target: ${jsonencode(var.rdma_ping_target)}
 cluster_ssh_user: ${jsonencode(var.instance_ssh_user)}
+stack_ssh_authorized_keys_lines: ${jsonencode([for line in split("\n", replace(local.cluster_ssh_authorized_keys, "\r", "")) : trimspace(line) if trimspace(line) != ""])}
 EOT
-  bm_private_ips_csv    = var.run_ansible_from_head ? join(",", compact(oci_core_instance.bm_compute_nodes[*].private_ip)) : ""
-  bm_instance_ocids_csv = var.run_ansible_from_head ? join(",", oci_core_instance.bm_compute_nodes[*].id) : ""
+  bm_private_ips_csv = var.run_ansible_from_head ? join(",", compact(oci_core_instance.bm_compute_nodes[*].private_ip)) : ""
+  # Keep user_data under OCI 32KB: embed BM private IPs only (no OCID+VNIC jq loop in bootstrap).
   bootstrap_template_vars = var.run_ansible_from_head ? {
-    compartment_id        = var.compartment_ocid
-    region                = var.region
-    tenancy_ocid          = var.tenancy_ocid
-    bm_count              = var.bm_node_count
-    instance_ssh_user     = var.instance_ssh_user
-    head_node_ssh_user    = var.head_node_ssh_user != "" ? var.head_node_ssh_user : "opc"
-    payload_b64           = filebase64(data.archive_file.playbooks[0].output_path)
-    extra_vars_b64        = base64encode(local.extra_vars_yaml)
-    rhsm_username_b64     = base64encode(var.rhsm_username)
-    rhsm_password_b64     = base64encode(var.rhsm_password)
-    bm_private_ips_csv    = local.bm_private_ips_csv
-    bm_instance_ocids_csv = local.bm_instance_ocids_csv
-    ssh_private_key_b64   = base64encode(tls_private_key.cluster_ssh.private_key_openssh)
+    compartment_id      = var.compartment_ocid
+    region              = var.region
+    tenancy_ocid        = var.tenancy_ocid
+    instance_ssh_user   = var.instance_ssh_user
+    head_node_ssh_user  = var.head_node_ssh_user != "" ? var.head_node_ssh_user : "opc"
+    payload_b64         = filebase64(data.archive_file.playbooks[0].output_path)
+    extra_vars_b64      = base64encode(local.extra_vars_yaml)
+    rhsm_username_b64   = base64encode(var.rhsm_username)
+    rhsm_password_b64   = base64encode(var.rhsm_password)
+    bm_private_ips_csv  = local.bm_private_ips_csv
+    ssh_private_key_b64 = base64encode(tls_private_key.cluster_ssh.private_key_openssh)
   } : {}
 }
 
@@ -265,7 +287,7 @@ EOT
 
 resource "oci_core_instance" "head_node" {
   compartment_id      = var.compartment_ocid
-  availability_domain = local.ad_name
+  availability_domain = local.head_node_ad
   # After BM nodes exist (Ansible bootstrap needs OCIDs / private IPs in user_data).
   depends_on = [time_sleep.wait_bm_instances]
 
@@ -298,8 +320,10 @@ resource "oci_core_instance" "head_node" {
     { ssh_authorized_keys = local.cluster_ssh_authorized_keys },
     {
       user_data = base64encode(replace(replace(templatefile("${path.module}/scripts/cloud_init_head.yaml.tpl", {
-        run_bootstrap = var.run_ansible_from_head
+        run_bootstrap        = var.run_ansible_from_head
         bootstrap_script_b64 = var.run_ansible_from_head ? base64encode(replace(replace(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars), "\r\n", "\n"), "\r", "\n")) : ""
+        authorized_keys_b64  = base64encode(local.cluster_ssh_authorized_keys)
+        head_ssh_user        = trimspace(var.head_node_ssh_user) != "" ? trimspace(var.head_node_ssh_user) : "opc"
       }), "\r\n", "\n"), "\r", "\n"))
     }
   )
@@ -375,9 +399,10 @@ resource "oci_core_instance" "bm_compute_nodes" {
     }
   }
 
-  metadata = {
-    ssh_authorized_keys = local.cluster_ssh_authorized_keys
-  }
+  metadata = merge(
+    { ssh_authorized_keys = local.cluster_ssh_authorized_keys },
+    local.bm_user_data_b64 != "" ? { user_data = local.bm_user_data_b64 } : {}
+  )
 
   source_details {
     source_type             = "image"
@@ -398,6 +423,15 @@ resource "oci_core_instance" "bm_compute_nodes" {
     update = "30m"
     delete = "30m"
   }
+}
+
+# Serial console / VNC (SSH tunnel) — optional troubleshooting access per BM instance.
+resource "oci_core_instance_console_connection" "bm_vnc" {
+  count = var.create_vnc ? var.bm_node_count : 0
+
+  # Defined instance order must match bm_compute_nodes index (replace BM instances to re-bind).
+  instance_id = oci_core_instance.bm_compute_nodes[count.index].id
+  public_key  = trimspace(var.ssh_public_key)
 }
 
 resource "time_sleep" "wait_bm_instances" {

@@ -111,15 +111,27 @@ variable "existing_private_subnet_id" {
   default     = ""
 }
 
+variable "availability_domain" {
+  type        = string
+  description = "Optional: single AD for the whole stack (head VM + compute cluster + BM instances), e.g. pILZ:PHX-AD-2. When set, overrides subnet-derived AD and cluster_network_availability_domain for placement. Must be valid for your subnets (regional subnets) or match AD-specific subnets."
+  default     = ""
+}
+
 variable "cluster_network_availability_domain" {
   type        = string
-  description = "Optional: same role as oci-hpc `ad` for cluster network + instance configuration. If empty, uses the private subnet's AD when the subnet is AD-specific, otherwise first tenancy AD."
+  description = "Optional: AD for compute cluster and BM instances when availability_domain is empty. Same role as oci-hpc `ad`. If empty, uses the private subnet's AD when AD-specific, else first tenancy AD."
   default     = ""
 }
 
 variable "use_compute_agent" {
   type        = bool
   description = "oracle-quickstart/oci-hpc `use_compute_agent`: enable Oracle Cloud Agent HPC RDMA plugins on BM nodes. Set false for custom RHEL images that do not support these plugins (configure RDMA via Ansible instead)."
+  default     = true
+}
+
+variable "bm_imds_ssh_key_bootstrap" {
+  type        = bool
+  description = "If true, BM user_data runs a first-boot script that copies ssh_authorized_keys from the OCI metadata service into opc, cloud-user, and ec2-user (whichever exist). Use for custom RHEL/Image Builder images that do not apply instance metadata keys. Changing this only affects new boots—replace BM instances to re-run user_data."
   default     = true
 }
 
@@ -166,12 +178,18 @@ variable "rdma_ping_target" {
 
 variable "instance_ssh_user" {
   type        = string
-  description = "SSH user for BM nodes (e.g. cloud-user for RHEL). Used for head too unless head_node_ssh_user is set."
-  default     = "cloud-user"
+  description = "SSH user for BM nodes in Ansible inventory. OCI images (Oracle Linux and most OCI RHEL/custom) use opc. Use cloud-user only if your image provisions that account."
+  default     = "opc"
 }
 
 variable "head_node_ssh_user" {
   type        = string
   description = "SSH user for the head node only. Default 'opc' matches Oracle Linux (default head image). Set to cloud-user if head is RHEL."
   default     = "opc"
+}
+
+variable "create_vnc" {
+  type        = bool
+  description = "If true, create OCI instance console connections for each BM node (serial console / VNC-style access via SSH tunnel; uses ssh_public_key)."
+  default     = false
 }

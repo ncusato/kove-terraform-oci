@@ -1,7 +1,9 @@
 ---
 # Cluster-wide: /etc/hosts and passwordless SSH for all nodes.
 # Use each host's SSH user (ansible_user from inventory) so head=opc and BM=cloud-user both work.
-# Preserves existing authorized_keys (e.g. Terraform ssh_authorized_keys) and appends cluster RSA keys.
+# Preserves login keys from Terraform (stack_ssh_authorized_keys_lines in extra_vars) and any existing
+# authorized_keys lines, then appends each host's generated id_rsa.pub (oci-hpc-style cluster keys).
+# Without the stack_* list, a failed/empty slurp could rewrite authorized_keys and lock you out after Ansible runs.
 
 - name: Set cluster SSH user fact (per-host; prefer inventory ansible_user over global cluster_ssh_user)
   ansible.builtin.set_fact:
@@ -55,12 +57,17 @@
     _existing_key_lines: []
   when: not _auth_stat.stat.exists
 
-- name: Build authorized_keys (existing + every host's cluster RSA pubkey, deduped)
+- name: Terraform login key lines from extra_vars (always merge; see main.tf extra_vars_yaml)
+  ansible.builtin.set_fact:
+    _stack_login_lines: "{{ stack_ssh_authorized_keys_lines | default([]) | map('trim') | reject('equalto', '') | list }}"
+
+- name: Build authorized_keys (stack login + existing file + every host's cluster RSA pubkey, deduped)
   ansible.builtin.set_fact:
     _authorized_keys_content: >-
       {{
         (
-          (_existing_key_lines | default([]))
+          (_stack_login_lines | default([]))
+          + (_existing_key_lines | default([]))
           + (groups['all'] | map('extract', hostvars) | selectattr('cluster_ssh_pubkey', 'defined') | map(attribute='cluster_ssh_pubkey') | list)
         ) | map('trim') | reject('equalto', '') | unique | join('\n')
       }}

@@ -9,8 +9,6 @@ do_bootstrap() {
   echo "$(date) B: go"
 
   COMPARTMENT_ID="${compartment_id}"
-  BM_COUNT=${bm_count}
-  BM_INSTANCE_OCIDS_CSV="${bm_instance_ocids_csv}"
   SSH_USER="${instance_ssh_user}"
   HEAD_SSH_USER="${head_node_ssh_user}"
   ANSIBLE_DIR="/opt/oci-hpc-ansible"
@@ -44,6 +42,8 @@ do_bootstrap() {
       mkdir -p "$_sshdir"
       echo "$SSH_PRIVATE_KEY_B64" | base64 -d > "$_sshdir/id_ed25519"
       chmod 600 "$_sshdir/id_ed25519"
+      ssh-keygen -y -f "$_sshdir/id_ed25519" > "$_sshdir/id_ed25519.pub" 2>/dev/null || true
+      chmod 644 "$_sshdir/id_ed25519.pub" 2>/dev/null || true
       chown -R "$_u:$_u" "$_sshdir" 2>/dev/null || true
     done
   fi
@@ -80,15 +80,10 @@ do_bootstrap() {
   rm -f /tmp/playbooks.zip
   echo "$EXTRA_VARS_B64" | base64 -d > "$ANSIBLE_DIR/extra_vars.yml"
 
-  if [ -n "$BM_PRIVATE_IPS_CSV" ]; then
-    echo "$(date) B: TF private IPs"
-  elif [ -n "$BM_INSTANCE_OCIDS_CSV" ]; then
-    echo "$(date) B: TF instance OCIDs (resolve VNICs)"
-  else
-    echo "$(date) B: ERROR no BM_PRIVATE_IPS_CSV or BM_INSTANCE_OCIDS_CSV" >&2
+  if [ -z "$BM_PRIVATE_IPS_CSV" ]; then
+    echo "$(date) B: ERROR empty BM_PRIVATE_IPS_CSV" >&2
     exit 1
   fi
-
   echo "$(date) B: inv..."
   mkdir -p "$ANSIBLE_DIR/inventory"
   HEAD_IP=$(hostname -I | awk '{print $1}')
@@ -96,53 +91,30 @@ do_bootstrap() {
 head-node ansible_host=$HEAD_IP ansible_user=$HEAD_SSH_USER ansible_connection=local
 
 [bm]" > "$ANSIBLE_DIR/inventory/hosts"
-
-  if [ -n "$BM_PRIVATE_IPS_CSV" ]; then
-    i=1
-    for _ip in $(echo "$BM_PRIVATE_IPS_CSV" | tr ',' ' '); do
-      _ip=$(echo "$_ip" | tr -d ' ')
-      [ -z "$_ip" ] && continue
-      echo "bm-node-$i ansible_host=$_ip ansible_user=$SSH_USER" >> "$ANSIBLE_DIR/inventory/hosts"
-      i=$((i+1))
+  i=1
+  for _ip in $(echo "$BM_PRIVATE_IPS_CSV" | tr ',' ' '); do
+    _ip=$(echo "$_ip" | tr -d ' ')
+    [ -z "$_ip" ] && continue
+    _bu="$SSH_USER"
+    for _try in "$SSH_USER" opc cloud-user ec2-user; do
+      [ -z "$_try" ] && continue
+      ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes "$${_try}@$${_ip}" true 2>/dev/null && {
+        _bu="$_try"
+        break
+      }
     done
-    BM_ADDED=$((i-1))
-    echo "$(date) B: +$BM_ADDED BM" >> "$LOG"
-  else
-    i=1
-    for inst_id in $(echo "$BM_INSTANCE_OCIDS_CSV" | tr ',' ' '); do
-      inst_id=$(echo "$inst_id" | tr -d ' ')
-      [ -z "$inst_id" ] && continue
-      PRIV_IP=""
-      for _try in 1 2; do
-        RAW=$(oci compute instance list-vnics --instance-id "$inst_id" --compartment-id "$COMPARTMENT_ID" --all 2>/dev/null) || true
-        PRIV_IP=$(echo "$RAW" | jq -r '.data[]? | select(."is-primary" == true or .isPrimary == true) | .privateIp // ."private-ip" // empty' 2>/dev/null | head -1)
-        if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
-          PRIV_IP=$(echo "$RAW" | jq -r '.data[0]? | .privateIp // ."private-ip" // .vnic.privateIp // .vnic."private-ip" // empty' 2>/dev/null)
-        fi
-        if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
-          PRIV_IP=$(echo "$RAW" | jq -r '.data[]? | .privateIp // ."private-ip" // .vnic.privateIp // .vnic."private-ip" // empty | select(. != null and . != "")' 2>/dev/null | head -1)
-        fi
-        if [ -z "$PRIV_IP" ] || [ "$PRIV_IP" = "null" ]; then
-          PRIV_IP=$(echo "$RAW" | jq -r '[.. | strings | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"))] | first // empty' 2>/dev/null)
-        fi
-        if [ -n "$PRIV_IP" ] && [ "$PRIV_IP" != "null" ]; then
-          break
-        fi
-        [ "$_try" -eq 1 ] && sleep 15
-      done
-      if [ -n "$PRIV_IP" ] && [ "$PRIV_IP" != "null" ]; then
-        echo "bm-node-$i ansible_host=$PRIV_IP ansible_user=$SSH_USER" >> "$ANSIBLE_DIR/inventory/hosts"
-        i=$((i+1))
-      else
-        echo "$(date) B: no IP $inst_id" >> "$LOG"
-      fi
-    done
-    BM_ADDED=$((i-1))
-    echo "$(date) B: +$BM_ADDED BM" >> "$LOG"
-    if [ "$BM_ADDED" -eq 0 ]; then
-      echo "$(date) B: [bm] empty" >> "$LOG"
-    fi
+    echo "$(date) B: bm-node-$i $_ip ansible_user=$_bu"
+    echo "bm-node-$i ansible_host=$_ip ansible_user=$_bu" >> "$ANSIBLE_DIR/inventory/hosts"
+    i=$((i+1))
+  done
+  BM_ADDED=$((i-1))
+  echo "$(date) B: +$BM_ADDED BM" >> "$LOG"
+  if [ "$BM_ADDED" -eq 0 ]; then
+    echo "$(date) B: [bm] empty" >> "$LOG"
   fi
+  echo "" >> "$ANSIBLE_DIR/inventory/hosts"
+  echo "[bm:vars]" >> "$ANSIBLE_DIR/inventory/hosts"
+  echo "ansible_ssh_private_key_file=/root/.ssh/id_ed25519" >> "$ANSIBLE_DIR/inventory/hosts"
 
   echo "[all:children]
 head
@@ -151,18 +123,31 @@ bm" >> "$ANSIBLE_DIR/inventory/hosts"
   echo "$(date) B: Ansible..."
   cd "$ANSIBLE_DIR"
   export ANSIBLE_HOST_KEY_CHECKING=False
-  ANSIBLE_PLAYBOOK=$(command -v ansible-playbook 2>/dev/null || echo "/usr/local/bin/ansible-playbook")
+  # pip installs here; sudo's secure_path often omits /usr/local/bin — always prefer absolute path.
+  if [ -x /usr/local/bin/ansible-playbook ]; then
+    ANSIBLE_PLAYBOOK=/usr/local/bin/ansible-playbook
+  else
+    ANSIBLE_PLAYBOOK=$(command -v ansible-playbook 2>/dev/null || true)
+  fi
+  if [ -z "$ANSIBLE_PLAYBOOK" ] || [ ! -x "$ANSIBLE_PLAYBOOK" ]; then
+    echo "$(date) B: ERROR ansible-playbook not found (install pip ansible or use /usr/local/bin)" >&2
+    exit 1
+  fi
   set +e
-  $ANSIBLE_PLAYBOOK -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml
+  "$ANSIBLE_PLAYBOOK" -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml
   _apb=$?
   set -e
   echo "$(date) B: ansible-playbook exit code: $_apb (0=ok)"
   if [ "$_apb" -ne 0 ]; then
-    echo "$(date) B: WARNING fix failures and re-run: cd $ANSIBLE_DIR && $ANSIBLE_PLAYBOOK -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml"
+    echo "$(date) B: WARNING re-run (sudo hides /usr/local/bin; use full path): cd $ANSIBLE_DIR && sudo $ANSIBLE_PLAYBOOK -i inventory/hosts configure-rhel-rdma.yml -e @extra_vars.yml"
   fi
 
   echo "$(date) B: done"
 }
 
-( nohup bash -c "$(declare -f do_bootstrap); sleep 90; do_bootstrap" >> "$LOG" 2>&1 & )
-echo "$(date) B: 90s $LOG"
+# Background subshell: avoid bash -c "$(declare -f do_bootstrap)" (breaks on " in function body).
+(
+  sleep 90
+  do_bootstrap
+) >> "$LOG" 2>&1 &
+echo "$(date) B: bg sleep90 -> $LOG"

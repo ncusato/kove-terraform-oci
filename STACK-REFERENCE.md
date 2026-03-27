@@ -71,7 +71,7 @@ That stack deploys **regular flex VMs** via **`oci_core_instance`** with explici
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `run_ansible_from_head` | Boolean | true | If true, head node runs the RHEL + RDMA Ansible playbook at first boot via cloud-init (`/opt/oci-hpc-ansible`). Set false only to skip `user_data`. |
-| `instance_ssh_user` | String | "cloud-user" | SSH user on BM nodes (RHEL; typically `cloud-user`) |
+| `instance_ssh_user` | String | `opc` | Ansible SSH user on BM nodes (OCI default is usually `opc`; use `cloud-user` only if your image provisions it) |
 | `head_node_ssh_user` | String | `opc` | SSH user on head node (`opc` for Oracle Linux head image). |
 | `rhsm_username` | String | "" | RHSM username (required when `run_ansible_from_head = true`) |
 | `rhsm_password` | String | "" | RHSM password (required when `run_ansible_from_head = true`) |

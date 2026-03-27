@@ -29,13 +29,17 @@ variableGroups:
       - existing_vcn_id
       - existing_public_subnet_id
       - existing_private_subnet_id
+      - availability_domain
       - cluster_network_availability_domain
       - use_compute_agent
+      - bm_imds_ssh_key_bootstrap
+      - create_vnc
       - cluster_display_name_prefix
       - bm_capacity_reservation_id
       - bm_generic_platform_config
       - bm_boot_volume_size_gbs
       - cluster_network_create_timeout
+
 
   - title: "Stack context (pre-filled from your session)"
     variables:
@@ -118,10 +122,16 @@ variables:
       compartmentId: ${compartment_ocid}
       vcnId: ${existing_vcn_id}
 
+  availability_domain:
+    type: string
+    title: "Stack availability domain (recommended)"
+    description: "Single AD for head VM and BM compute cluster (e.g. pILZ:PHX-AD-2). When set, overrides subnet-derived placement and BM-only cluster_network_availability_domain. Leave empty to derive from subnets."
+    required: false
+
   cluster_network_availability_domain:
     type: string
-    title: "BM / compute cluster availability domain (optional)"
-    description: "Placement AD for compute cluster and BM instances. Leave empty to use the private subnet's AD when AD-specific, else first tenancy AD."
+    title: "BM availability domain (optional fallback)"
+    description: "Used only when Stack availability domain is empty. Placement AD for compute cluster and BM instances; else private subnet AD or first tenancy AD."
     required: false
 
   use_compute_agent:
@@ -130,6 +140,20 @@ variables:
     description: "Matches oci-hpc use_compute_agent. Disable for custom RHEL if BM launch fails; use Ansible for RDMA when false."
     default: true
     required: true
+
+  bm_imds_ssh_key_bootstrap:
+    type: boolean
+    title: "BM: install SSH keys from metadata (custom RHEL)"
+    description: "First-boot script copies instance ssh_authorized_keys from OCI IMDS into opc, cloud-user, and ec2-user if those accounts exist. Enable for Image Builder RHEL images that skip default key injection. Replace BM instances after changing this; user_data runs only at first boot."
+    default: true
+    required: false
+
+  create_vnc:
+    type: boolean
+    title: "BM: create instance console connections (VNC)"
+    description: "If true, creates an OCI instance console connection per BM node for serial console access via SSH tunnel (uses the stack SSH public key)."
+    default: false
+    required: false
 
   cluster_display_name_prefix:
     type: string
@@ -182,8 +206,8 @@ variables:
   instance_ssh_user:
     type: string
     title: "SSH user for BM nodes"
-    description: "Default user on RHEL BM image (e.g. cloud-user). Used for Ansible inventory for BM nodes."
-    default: "cloud-user"
+    description: "Ansible SSH user for bare metal nodes. Default opc matches Oracle Linux and typical OCI RHEL/custom images. Use cloud-user only if that is your image default."
+    default: "opc"
     required: false
 
   head_node_ssh_user:
@@ -229,4 +253,7 @@ outputs:
     visible: true
   cluster_ssh_private_key_openssh:
     title: "Emergency SSH key for opc (ED25519, sensitive)"
+    visible: true
+  cluster_ssh_public_key_openssh:
+    title: "Cluster SSH public key (verify BM authorized_keys)"
     visible: true

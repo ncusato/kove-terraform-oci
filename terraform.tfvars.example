@@ -18,6 +18,8 @@ existing_vcn_id            = "ocid1.vcn.oc1.phx.aaaaaaaa..."
 existing_public_subnet_id  = "ocid1.subnet.oc1.phx.aaaaaaaa..."
 existing_private_subnet_id = "ocid1.subnet.oc1.phx.aaaaaaaa..."
 
+# Optional: one AD for head + BMs (e.g. "pILZ:PHX-AD-2"). When set, overrides cluster_network_availability_domain for BMs.
+availability_domain = ""
 cluster_network_availability_domain = ""
 # oci-hpc parity: false if custom RHEL + pool shows "Launched 0 of N" (HPC agent plugins); keep true for Oracle Linux HPC images.
 use_compute_agent = true
@@ -39,5 +41,9 @@ rhsm_username         = ""
 rhsm_password         = ""
 rdma_ping_target      = ""
 
-instance_ssh_user  = "cloud-user"
+# BM inventory user: opc for Oracle Linux / typical OCI RHEL; cloud-user only if your image uses it
+instance_ssh_user  = "opc"
 head_node_ssh_user = "opc"
+
+# OCI serial console via instance console connection (SSH tunnel + VNC); uses ssh_public_key
+create_vnc = false

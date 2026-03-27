@@ -6,6 +6,14 @@
       - NetworkManager-cloud-setup
     state: present
 
+- name: Ensure nm-cloud-setup drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/nm-cloud-setup.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Drop-in for nm-cloud-setup (enable OCI + debug)
   ansible.builtin.copy:
     dest: /etc/systemd/system/nm-cloud-setup.service.d/oci.conf
@@ -53,11 +61,18 @@
       oci-cn-auth install failed for all URLs. Check network and override oci_cn_auth_rpm_urls
       (see roles/rdma_auth/defaults/main.yml).
 
-- name: Restart oci-cn-auth service
+- name: Check whether oci-cn-auth systemd unit exists
+  ansible.builtin.command: systemctl list-unit-files oci-cn-auth.service --no-legend --no-pager
+  register: oci_cn_auth_unit_check
+  changed_when: false
+  failed_when: false
+
+- name: Restart oci-cn-auth service (when unit exists)
   ansible.builtin.systemd:
     name: oci-cn-auth.service
     state: restarted
     enabled: true
+  when: oci_cn_auth_unit_check.rc == 0
 
 - name: First-time RDMA auth (OCA)
   ansible.builtin.command: "oci-cn-auth --interface {{ rdma_interface }}"
