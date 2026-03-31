@@ -53,7 +53,7 @@ do_bootstrap() {
     if [ -n "$RHSM_USER" ] && [ -n "$RHSM_PASS" ]; then
       echo "$(date) B: RHSM..."
       subscription-manager register --username "$RHSM_USER" --password "$RHSM_PASS" --auto-attach --force 2>/dev/null || true
-      subscription-manager release --set=8.8 2>/dev/null || true
+      subscription-manager release --set=${rhel_subscription_release} 2>/dev/null || true
       subscription-manager repos --enable=rhel-8-for-x86_64-baseos-rpms --enable=rhel-8-for-x86_64-appstream-rpms 2>/dev/null || true
     fi
   else

@@ -9,7 +9,7 @@ This document supplements the **[README](README.md)** with Terraform **variable*
 | What | Notes |
 |------|--------|
 | **Deploy** | Use the **Deploy to Oracle Cloud** button in the [README](README.md) or zip `main.tf`, `variables.tf`, `outputs.tf`, `schema.yaml`, `scripts/`, `playbooks/` (+ `inventory.tpl` if used) and create a stack in **Resource Manager**. |
-| **Image** | Set **`bm_node_image_ocid`** to your RHEL 8.8 custom image. Leave **`head_node_image_ocid`** empty to use latest **Oracle Linux 8** on the head. |
+| **Image** | Set **`bm_node_image_ocid`** to your **RHEL 8.10** (or validated compatible / STIG) custom image. Leave **`head_node_image_ocid`** empty to use latest **Oracle Linux 8** on the head. |
 | **SSH** | **`ssh_public_key`** is your login key. When **Run Ansible from head** is **true**, the head uses the **Terraform-generated ED25519** private key (embedded in bootstrap) to SSH to BMs; that key's public half is already on all nodes. |
 | **Ansible from head** | Set **`run_ansible_from_head`** = true, **`rhsm_username`** / **`rhsm_password`** for BMs, dynamic group + policy for **instance principal** (see [Run Ansible from head node](#run-ansible-from-head-node-resource-manager)). Bootstrap log: **`/var/log/oci-hpc-ansible-bootstrap.log`**. |
 | **Timeouts** | Empty **`cluster_network_create_timeout`** uses **`max(oci-hpc formula, 120m)`** (BM fabric often needs &gt;30m). Override with e.g. `180m` if Console still shows PROVISIONING. **`bm_pool_ready_wait`** default **10m** after RUNNING. |
@@ -29,7 +29,7 @@ That stack deploys **regular flex VMs** via **`oci_core_instance`** with explici
 
 2. **Authentication:** This stack is for OCI Resource Manager only. It uses the **resource principal** (no API keys). The user running the stack must have permission to create the resources in the chosen compartment.
 
-3. **Custom Image**: RHEL **8.8** image OCID in the target compartment (build/import steps are in the [README](README.md) ? *Image build*).
+3. **Custom Image**: RHEL **8.10** image OCID in the target compartment (build/import steps are in the [README](README.md) ? *Image build*). Optional STIG-hardened images: see README Step 1 and **`stig-rhel810.overrides.tfvars`**.
 
 4. **SSH Key Pair**:
    - Public key for instance access
@@ -44,7 +44,7 @@ That stack deploys **regular flex VMs** via **`oci_core_instance`** with explici
 | `region` | String | Region (pre-filled from your session in the Console) |
 | `compartment_ocid` | String | Compartment where resources will be created |
 | `ssh_public_key` | String | SSH public key to inject into instances |
-| `bm_node_image_ocid` | String | RHEL 8.8 image OCID for BM cluster network nodes |
+| `bm_node_image_ocid` | String | RHEL 8.10 (or compatible) custom image OCID for BM cluster network nodes |
 | `head_node_image_ocid` | String | *(Optional)* Image for the head node. **If empty, latest Oracle Linux 8 is used** (recommended; no RHSM on head). Ansible registers RHEL only on BM nodes. Set to override (e.g. a specific OL image). |
 
 ### Network Configuration
@@ -74,11 +74,12 @@ Older tfvars may list **`cluster_network_availability_domain`**; that variable w
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `run_ansible_from_head` | Boolean | true | If true, head node runs the RHEL + RDMA Ansible playbook at first boot via cloud-init (`/opt/oci-hpc-ansible`). Set false only to skip `user_data`. |
-| `instance_ssh_user` | String | `opc` | Ansible SSH user on BM nodes (OCI default is usually `opc`; use `cloud-user` only if your image provisions it) |
-| `head_node_ssh_user` | String | `opc` | SSH user on head node (`opc` for Oracle Linux head image). |
+| `instance_ssh_user` | String | `cloud-user` | Ansible SSH user on BM nodes (default matches OCI RHEL; use `opc` if your image uses it). |
+| `head_node_ssh_user` | String | `opc` | SSH user on head node (`opc` for Oracle Linux head image, `cloud-user` if head uses RHEL). |
 | `rhsm_username` | String | "" | RHSM username (required when `run_ansible_from_head = true`) |
 | `rhsm_password` | String | "" | RHSM password (required when `run_ansible_from_head = true`) |
 | `rdma_ping_target` | String | "" | Optional IP for RDMA ping check (e.g. another BM node's RDMA interface) |
+| `rhel_subscription_release` | String | `8.10` | Passed to `subscription-manager release --set` on RHEL nodes (bootstrap + `rhel_prep`). |
 | `bm_pool_ready_wait` | String | "10m" | Wait after RUNNING before **`oci_core_cluster_network_instances`** + **`oci_core_instance`** (oci-hpc **data.tf** pattern). |
 
 **Recommended:** Set **Head node image** to an **Oracle Linux** image. The head then uses free OL repos (no RHSM), installs Ansible and OCI CLI, and runs the playbook; Ansible registers **RHEL only on the BM nodes** and does all installs there.
@@ -128,7 +129,7 @@ zip -r oci-hpc-bm-cluster-stack.zip main.tf variables.tf outputs.tf schema.yaml 
 - **Tenancy OCID** and **Region** are pre-filled from your session; you usually don?t need to change them.
 - **Compartment**: Where to create resources (dropdown filtered by tenancy).
 - **SSH Public Key**: For instance access.
-- **RHEL 8.8 Image**: Image for BM and head node (dropdown filtered by compartment).
+- **RHEL 8.10 Image**: Custom image for BM nodes (dropdown filtered by compartment); optional head image override.
 
 **Optional Network Variables**:
 - `use_existing_vcn`: Set to `true` to use existing VCN (default: `false`)
@@ -364,7 +365,7 @@ The project includes two Ansible roles that can be used independently:
 **Tasks**:
 - Sets hostname pattern (requires `bm_prefix` variable)
 - Registers with Red Hat Subscription Manager (idempotent)
-- Pins RHEL release to 8.8
+- Pins RHEL minor via **`rhel_subscription_release`** (default **8.10**; override for older images)
 - Enables RHEL repositories (BaseOS, AppStream)
 - Installs toolchain (python3, policycoreutils-python-utils, environment-modules)
 - Installs RDMA libraries and utilities

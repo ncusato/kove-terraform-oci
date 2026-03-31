@@ -32,8 +32,8 @@
   ansible.builtin.command: subscription-manager config --rhsm.manage_repos=1
   changed_when: false
 
-- name: Pin RHEL release to 8.8
-  ansible.builtin.command: subscription-manager release --set=8.8
+- name: Pin RHEL release (match image / entitlement; override with -e rhel_subscription_release=)
+  ansible.builtin.command: "subscription-manager release --set={{ rhel_subscription_release | default('8.10') }}"
   register: sm_release_set
   changed_when: "'Release set to' in (sm_release_set.stdout | default(''))"
 

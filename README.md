@@ -9,7 +9,7 @@ This is a **RHEL** deployment on OCI bare metal with **RDMA authentication** for
 - [Summary](#summary)
 - [Prerequisites (policies and permissions)](#prerequisites-policies-and-permissions)
 - [Steps](#steps)
-  - [Step 1 — RHEL 8.8 image](#step-1--rhel-88-image-in-oci)
+  - [Step 1 — RHEL 8.10 image](#step-1--rhel-810-image-in-oci)
   - [Step 2 — Resource Manager stack](#step-2--create-the-stack-in-resource-manager)
   - [Step 3 — Variables](#step-3--configure-variables-wizard)
   - [Step 4 — Plan and apply](#step-4--plan-and-apply)
@@ -47,7 +47,7 @@ This **OCI Resource Manager** / Terraform stack builds a small **HPC cluster**:
 
 - A **VCN** (create new or use existing subnets).
 - A **head VM** (Oracle Linux 8 by default) for operations and optional Ansible.
-- A **compute cluster** with **bare metal** nodes (**BM.Optimized3.36** by default, count configurable). Nodes use a **custom RHEL** image you import into OCI.
+- A **compute cluster** with **bare metal** nodes (**BM.Optimized3.36** by default, count configurable). Nodes use a **custom RHEL 8.10** image you import into OCI (or another RHEL image you validate, including optional **STIG-hardened** builds).
 
 Bare metal provisioning is **slow** compared to VMs (often **tens of minutes per node**; allow **up to ~2 hours** in a busy region). The head VM is created **after** the bare metal instances exist when **Run Ansible from head** is enabled (Terraform waits so `user_data` can include BM private IPs).
 
@@ -131,14 +131,16 @@ Copy **`terraform.tfvars.example`** to **`terraform.tfvars`** and fill in values
 
 ## Steps
 
-<a id="step-1--rhel-88-image-in-oci"></a>
+<a id="step-1--rhel-810-image-in-oci"></a>
 
 <details>
-<summary><strong>Step 1</strong> — RHEL 8.8 image in OCI</summary>
+<summary><strong>Step 1</strong> — RHEL 8.10 image in OCI</summary>
 
 Start with Oracle’s overview: **[Bare metal servers on OCI with Red Hat Enterprise Linux](https://blogs.oracle.com/cloud-infrastructure/bare-metal-servers-oci-red-hat-enterprise-linux)**.
 
-You need a **RHEL 8.8** disk image in your compartment as a **custom image** (qcow2), then use its **OCID** in **Step 3**. **Do not bake SSH keys into the image** — OCI injects `ssh_authorized_keys` at launch.
+You need a **RHEL 8.10** disk image in your compartment as a **custom image** (qcow2), then use its **OCID** in **Step 3**. **Do not bake SSH keys into the image** — OCI injects `ssh_authorized_keys` at launch.
+
+**Optional — STIG / hardened builds:** You can use your own **STIG-hardened** (or otherwise locked-down) RHEL 8.x image instead of the reference blueprint, as long as it boots on **BM.Optimized3.36**, exposes a normal SSH login user (often **`cloud-user`** on OCI-flavored RHEL), and allows **RHSM** / **dnf** for the playbook (watch **firewalld**, **fapolicyd**, and **pip** restrictions). Set the same custom image on **`bm_node_image_ocid`** and, if you want the head on that image too, on **`head_node_image_ocid`**, and set **`head_node_ssh_user`** to match your image (see **[`stig-rhel810.overrides.tfvars`](stig-rhel810.overrides.tfvars)** for a CLI merge example). **`rhel_subscription_release`** defaults to **`8.10`**; change it only if your subscription or image needs a different minor.
 
 #### Option A — Red Hat Image Builder (recommended)
 
@@ -152,7 +154,7 @@ You need a **RHEL 8.8** disk image in your compartment as a **custom image** (qc
 
    ![Click Import image in Image Builder](docs/images/rhel-image-builder/import-blueprint.png)
 
-4. **Download the blueprint TOML** from this repository: **[`oci_8.8_baremetal.toml`](oci_8.8_baremetal.toml)** (same content as the collapsible reference below). You will use this file in the next step.
+4. **Download the blueprint TOML** from this repository: **[`oci_8.10_baremetal.toml`](oci_8.10_baremetal.toml)** (same content as the collapsible reference below). You will use this file in the next step. *(The old filename `oci_8.8_baremetal.toml` was a label mismatch—the kernel and distro in that file were already **8.10**.)*
 
 5. **Select or upload the TOML** you downloaded and continue the import flow in the console.
 
@@ -183,15 +185,15 @@ You need a **RHEL 8.8** disk image in your compartment as a **custom image** (qc
 Use a **KVM/qcow2** from [Red Hat downloads](https://access.redhat.com/downloads) or push the same TOML with **composer-cli** on a subscribed RHEL host, then import to OCI as above.
 
 <details>
-<summary><strong>RHEL 8.8 Image Builder blueprint (inline TOML copy)</strong></summary>
+<summary><strong>RHEL 8.10 Image Builder blueprint (inline TOML copy)</strong></summary>
 
-Save as `rhel-8.8-baremetal.toml`. **No SSH keys in the image** — OCI injects `ssh_authorized_keys` at launch. Adjust `distro` / kernel NEVRAs if your Image Builder catalog differs. The canonical file in this repo is **[`oci_8.8_baremetal.toml`](oci_8.8_baremetal.toml)**.
+Save as `rhel-8.10-baremetal.toml`. **No SSH keys in the image** — OCI injects `ssh_authorized_keys` at launch. Adjust `distro` / kernel NEVRAs if your Image Builder catalog differs. The canonical file in this repo is **[`oci_8.10_baremetal.toml`](oci_8.10_baremetal.toml)**.
 
 ```toml
-name = "rhel-8.8-baremetal"
-description = "RHEL 8.8 baremetal"
+name = "rhel-8.10-baremetal"
+description = "RHEL 8.10 baremetal"
 version = "1.0.0"
-distro = "rhel-8.8"
+distro = "rhel-8.10"
 
 modules = []
 groups = []
@@ -268,7 +270,7 @@ group = "root"
 data = "blacklist nvme_tcp\nblacklist nvme_fabrics\ninstall nvme_tcp /bin/false\ninstall nvme_fabrics /bin/false\n"
 ```
 
-**Build (example):** on a subscribed RHEL host — `composer-cli blueprints push rhel-8.8-baremetal.toml` → `composer-cli compose start rhel-8.8-baremetal qcow2` → download when **FINISHED**, then import using **Option A** steps 8–10 above.
+**Build (example):** on a subscribed RHEL host — `composer-cli blueprints push rhel-8.10-baremetal.toml` → `composer-cli compose start rhel-8.10-baremetal qcow2` → download when **FINISHED**, then import using **Option A** steps 8–10 above.
 
 Use the image **OCID** in **Step 3**.
 
@@ -299,7 +301,7 @@ Include the Terraform files, **`schema.yaml`**, **`scripts/`**, **`playbooks/`**
 |-------------------|----------------|
 | **Compartment** | Where resources are created |
 | **SSH public key** | The key you use to SSH to instances |
-| **BM / RHEL image** | OCID of your **RHEL 8.8** image (Step 1) |
+| **BM / RHEL image** | OCID of your **RHEL 8.10** image (Step 1), or another validated RHEL image (e.g. STIG-hardened) |
 | **Head image** | Leave **empty** for latest **Oracle Linux 8** (recommended) |
 
 **Optional**
@@ -412,6 +414,10 @@ sudo tail -n 100 /var/log/oci-cn-auth-cron.log
 - [RDMA on OCI](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/hpc-rdma.htm)
 - [Import custom image](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/importingcustomimage.htm)
 - [RHEL on OCI bare metal (Oracle blog)](https://blogs.oracle.com/cloud-infrastructure/bare-metal-servers-oci-red-hat-enterprise-linux)
+
+### Git branches
+
+**Commits** on your default branch already preserve work—you do not need a separate branch for “not losing progress.” Use a **topic branch** (for example `experiment/stig-hardened`) only if you want long-running changes isolated from what others install from `master`, or while you validate a STIG image before merging. Move the Resource Manager **tag** (e.g. **`Kove-Infra-OCI`**) when you want the **Deploy to Oracle Cloud** button to pick up a specific release.
 
 ### License
 

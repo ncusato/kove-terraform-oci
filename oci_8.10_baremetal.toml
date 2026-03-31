@@ -1,8 +1,9 @@
-# RHEL 8.8 image for BM.Optimized3.36 + OCI cluster network (see oracle-quickstart/oci-hpc).
-name = "rhel-8.8-baremetal"
-description = "RHEL 8.8 baremetal"
+# RHEL 8.10 image for BM.Optimized3.36 + OCI cluster network (see oracle-quickstart/oci-hpc).
+# Kernel NEVRAs are el8_10; Image Builder distro is rhel-8.10.
+name = "rhel-8.10-baremetal"
+description = "RHEL 8.10 baremetal"
 version = "1.0.0"
-distro = "rhel-8.8"
+distro = "rhel-8.10"
 
 modules = []
 groups = []
@@ -77,5 +78,4 @@ mode = "644"
 user = "root"
 group = "root"
 data = "blacklist nvme_tcp\nblacklist nvme_fabrics\ninstall nvme_tcp /bin/false\ninstall nvme_fabrics /bin/false\n"
-
 

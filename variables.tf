@@ -20,7 +20,7 @@ variable "ssh_public_key" {
 
 variable "bm_node_image_ocid" {
   type        = string
-  description = "RHEL 8.8 image OCID for BM.Optimized3.36 nodes (cluster network)"
+  description = "RHEL 8.10 (or compatible) custom image OCID for BM.Optimized3.36 nodes (cluster network)"
 }
 
 variable "head_node_image_ocid" {
@@ -192,6 +192,12 @@ variable "rdma_ping_target" {
   type        = string
   description = "RDMA interface ping target IP (e.g. another BM node's secondary VNIC IP) for playbook when run_ansible_from_head = true."
   default     = ""
+}
+
+variable "rhel_subscription_release" {
+  type        = string
+  description = "RHEL minor release for subscription-manager release --set (head bootstrap + rhel_prep role). Default 8.10 matches this stack’s RHEL 8.10 image; set lower (e.g. 8.8) only if your image/subscriptions require it."
+  default     = "8.10"
 }
 
 variable "head_ansible_playbooks_url" {

@@ -49,6 +49,9 @@ rhsm_username         = ""
 rhsm_password         = ""
 rdma_ping_target      = ""
 
+# RHEL minor for subscription-manager release --set (default 8.10). Override only if your image or entitlements need another minor (e.g. 8.8).
+# rhel_subscription_release = "8.8"
+
 # BM inventory user for this RHEL flow
 instance_ssh_user  = "cloud-user"
 head_node_ssh_user = "opc"

@@ -351,6 +351,7 @@ rhsm_username: ${jsonencode(var.rhsm_username)}
 rhsm_password: ${jsonencode(var.rhsm_password)}
 rdma_ping_target: ${jsonencode(var.rdma_ping_target)}
 cluster_ssh_user: ${jsonencode(var.instance_ssh_user)}
+rhel_subscription_release: ${jsonencode(var.rhel_subscription_release)}
 stack_ssh_authorized_keys_lines: []
 EOT
   bm_private_ips_csv = var.run_ansible_from_head ? join(",", compact(oci_core_instance.bm_compute_nodes[*].private_ip)) : ""
@@ -364,8 +365,9 @@ EOT
     extra_vars_b64      = base64encode(local.extra_vars_yaml)
     rhsm_username_b64   = base64encode(var.rhsm_username)
     rhsm_password_b64   = base64encode(var.rhsm_password)
-    bm_private_ips_csv  = local.bm_private_ips_csv
-    ssh_private_key_b64 = base64encode(tls_private_key.cluster_ssh.private_key_openssh)
+    bm_private_ips_csv            = local.bm_private_ips_csv
+    ssh_private_key_b64           = base64encode(tls_private_key.cluster_ssh.private_key_openssh)
+    rhel_subscription_release     = var.rhel_subscription_release
   } : {}
 
   # OCI caps combined instance metadata (~32KB). Default: Terraform uploads playbooks.zip to Object Storage
