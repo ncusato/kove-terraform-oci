@@ -2,19 +2,29 @@
 
 [![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/tags/Kove-Infra-OCI.zip)
 
-The button uses Git tag **`Kove-Infra-OCI`** so Resource Manager suggests a readable default stack name (from the tag), not `master.zip-…`. The tag is moved to match **`master`** when this stack is released. For the absolute latest commit without waiting for a tag update, create a stack from **`https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip`** (upload or paste as package URL).
+This is a **RHEL** deployment on OCI bare metal with **RDMA authentication** for **HPC**.
 
 ## Table of contents
 
 - [Summary](#summary)
 - [Prerequisites (policies and permissions)](#prerequisites-policies-and-permissions)
 - [Steps](#steps)
+  - [Step 1 — RHEL 8.8 image](#step-1--rhel-88-image-in-oci)
+  - [Step 2 — Resource Manager stack](#step-2--create-the-stack-in-resource-manager)
+  - [Step 3 — Variables](#step-3--configure-variables-wizard)
+  - [Step 4 — Plan and apply](#step-4--plan-and-apply)
+  - [Step 5 — Log in and verify](#step-5--log-in-and-verify)
 - [Reference](#reference)
 - [FAQ](FAQ.md)
+
+Sections use **`<details>`** blocks and are **collapsed by default** on GitHub; click a summary row to expand. Links above scroll to the right place—you may still need to open the block to read it.
 
 ---
 
 ## Summary
+
+<details>
+<summary><strong>Summary</strong> — Kove context, why OCI, what this stack deploys</summary>
 
 **[Kove](https://kove.com/)** builds **Kove:SDM™** (*software-defined memory*)—technology that lets many servers share and grow effective memory capacity from a common pool so large, memory-heavy jobs (HPC, AI, analytics, and similar) are less constrained by a single machine’s RAM. Learn more on **[kove.com](https://kove.com/)**.
 
@@ -43,9 +53,14 @@ Bare metal provisioning is **slow** compared to VMs (often **tens of minutes per
 
 **Deeper detail** (variables, outputs, troubleshooting, file layout): **[STACK-REFERENCE.md](STACK-REFERENCE.md)**.
 
+</details>
+
 ---
 
 ## Prerequisites (policies and permissions)
+
+<details>
+<summary><strong>Prerequisites</strong> — OCI requirements, IAM, Ansible from head, local config</summary>
 
 ### What you need in OCI
 
@@ -77,7 +92,7 @@ Tighten or broaden to match your security standards. Resource Manager execution 
 
 ### Optional: Run Ansible from head at first boot
 
-If you set **`run_ansible_from_head = true`**, the head node’s **cloud-init** unpacks the **`playbooks/`** tree to **`/opt/oci-hpc-ansible`** and runs **`configure-rhel-rdma.yml`**. That path uses the **OCI CLI** with **instance principal** (no API key on disk).
+If you set **`run_ansible_from_head = true`**, the head node’s **cloud-init** downloads **`playbooks.zip`** (HTTPS) and unpacks it to **`/opt/oci-hpc-ansible`**, then runs **`configure-rhel-rdma.yml`**. By default Terraform **uploads** that zip to **Object Storage** (anonymous object read) so the head can **`curl`** it—avoiding embedding the zip in **`user_data`** (OCI **~32 KB** combined metadata limit). Override with **`head_ansible_playbooks_url`** if you host the zip yourself. The playbook path uses the **OCI CLI** with **instance principal** (no API key on disk).
 
 **Configure IAM before relying on it:**
 
@@ -100,9 +115,9 @@ If you set **`run_ansible_from_head = true`**, the head node’s **cloud-init** 
 
 3. **Red Hat subscriptions** — For RHEL on the bare metal nodes, provide **RHSM** credentials (stack variables or a local `secrets.auto.tfvars` file). The head can stay on **Oracle Linux** and does not need RHSM for itself.
 
-4. **First boot only** — OCI **`user_data`** runs on the instance’s **first boot**. If you change **`run_ansible_from_head`** or the embedded playbooks, **replace the head instance** (e.g. `terraform apply -replace=oci_core_instance.head_node`) so cloud-init runs again.
+4. **First boot only** — OCI **`user_data`** runs on the instance’s **first boot**. If you change **`run_ansible_from_head`**, **`head_ansible_playbooks_url`**, or the playbooks under **`playbooks/`** (so the uploaded zip changes), **replace the head instance** (e.g. `terraform apply -replace=oci_core_instance.head_node`) so cloud-init runs again.
 
-5. **Metadata size limit** — Instance metadata is capped at **32 KB**. This stack **does not** ship the large legacy **`site.yml`** in the embedded zip so the bundle stays under the limit. The playbook you run is **`configure-rhel-rdma.yml`**.
+5. **Metadata size limit** — Instance metadata is capped at **~32 KB** (combined **`ssh_authorized_keys` + `user_data`**). Playbooks are **not** embedded in `user_data` by default; they are served from **Object Storage** or your **`head_ansible_playbooks_url`**. The zip still **excludes** the large legacy **`site.yml`**; the automation playbook is **`configure-rhel-rdma.yml`**.
 
 **Logs on the head:** `/var/log/oci-hpc-ansible-bootstrap.log`
 
@@ -110,11 +125,16 @@ If you set **`run_ansible_from_head = true`**, the head node’s **cloud-init** 
 
 Copy **`terraform.tfvars.example`** to **`terraform.tfvars`** and fill in values for your environment. For sensitive values (for example RHSM), use a file such as **`secrets.auto.tfvars`** that Terraform loads automatically, and store it only on trusted systems—consistent with your organization’s policies for secrets and configuration.
 
+</details>
+
 ---
 
 ## Steps
 
-### Step 1 — RHEL 8.8 image in OCI
+<a id="step-1--rhel-88-image-in-oci"></a>
+
+<details>
+<summary><strong>Step 1</strong> — RHEL 8.8 image in OCI</summary>
 
 Start with Oracle’s overview: **[Bare metal servers on OCI with Red Hat Enterprise Linux](https://blogs.oracle.com/cloud-infrastructure/bare-metal-servers-oci-red-hat-enterprise-linux)**.
 
@@ -254,7 +274,12 @@ Use the image **OCID** in **Step 3**.
 
 </details>
 
-### Step 2 — Create the stack in Resource Manager
+</details>
+
+<a id="step-2--create-the-stack-in-resource-manager"></a>
+
+<details>
+<summary><strong>Step 2</strong> — Create the stack in Resource Manager</summary>
 
 1. Click **Deploy to Oracle Cloud** at the top of this page (package is tag **`Kove-Infra-OCI`** for a sensible default **Name** in step 1), **or**
 2. Upload a zip of the Terraform configuration (**Resource Manager → Stacks → Create stack**).
@@ -263,7 +288,12 @@ On **Stack information**, you can set **Name** to something like **`kove-infra-<
 
 Include the Terraform files, **`schema.yaml`**, **`scripts/`**, **`playbooks/`**, and **`inventory.tpl`** if present. Details: **[STACK-REFERENCE.md — Deployment steps](STACK-REFERENCE.md#deployment-steps)**.
 
-### Step 3 — Configure variables (wizard)
+</details>
+
+<a id="step-3--configure-variables-wizard"></a>
+
+<details>
+<summary><strong>Step 3</strong> — Configure variables (wizard)</summary>
 
 | Console / purpose | What to enter |
 |-------------------|----------------|
@@ -284,18 +314,44 @@ Include the Terraform files, **`schema.yaml`**, **`scripts/`**, **`playbooks/`**
 
 **All variable names, types, and defaults** → **[STACK-REFERENCE.md](STACK-REFERENCE.md#terraform-variables)**.
 
-### Step 4 — Plan and apply
+</details>
+
+<a id="step-4--plan-and-apply"></a>
+
+<details>
+<summary><strong>Step 4</strong> — Plan and apply</summary>
 
 1. **Plan** — review the plan.  
 2. **Apply** — deploy.  
 3. Wait for the job; bare metal provisioning is often **45–90+ minutes**.
 
-### Step 5 — Log in and verify
+</details>
 
-- Open the job **Outputs** for **head public IP** and **BM private IPs** (see [outputs](STACK-REFERENCE.md#terraform-outputs) in the reference).
+<a id="step-5--log-in-and-verify"></a>
+
+<details>
+<summary><strong>Step 5</strong> — Log in and verify</summary>
+
+- Open the job **Outputs** for **head public IP** and **BM private IPs** (see [outputs](STACK-REFERENCE.md#terraform-outputs) in the reference). Terraform also exposes **`head_ansible_playbooks_effective_url`** when Ansible-from-head is enabled (Object Storage URL or your override).
 - **Head (Oracle Linux):** `ssh opc@<head_public_ip>`
 - **BM nodes (RHEL), from the head:** `ssh cloud-user@<bm_private_ip>`
-- **Optional:** For passwordless SSH from head to BMs and a managed BM `/etc/hosts` block, see **`docs/HEAD-BM-SSH-README.md`**.
+
+**Two SSH keys (do not confuse them)**
+
+| What | Role |
+|------|------|
+| **Your stack `ssh_public_key`** (in tfvars / wizard) | You log in with **your** matching private key as **opc** (head) or **cloud-user** (BM). |
+| **`terraform output -raw cluster_ssh_private_key_openssh`** | Terraform-generated **ED25519** for **head → BM** when **cloud-init** runs **`/opt/oci-hpc-bootstrap.sh`**; it installs **`/root/.ssh/id_ed25519`** on the head for Ansible. You only need to copy this manually if bootstrap did not run. |
+
+**Optional passwordless SSH (head → BMs):** Walkthrough → **`docs/HEAD-BM-SSH-README.md`**. The helper script is **shipped inside `playbooks.zip`**: on the head after a successful bootstrap it is **`/opt/oci-hpc-ansible/scripts/setup_bm_passwordless_ssh.sh`**, with **`kove-bm-bootstrap.conf.example`** beside it. OCI does **not** clone GitHub for you—you only need **`git clone`** (or copy **`playbooks/scripts/`** from your laptop) if bootstrap failed or your **`playbooks.zip`** predates the `scripts/` folder. In this repo the sources live under **`playbooks/scripts/`**.
+
+**What “healthy” often looks like on a BM (`ip a`)**
+
+- **eth0** — primary **VCN** address (e.g. **`172.16.x.x/22`**). This is what you use for **`ssh cloud-user@…`** from the head.
+- **eth2** — on shapes such as **BM.Optimized3** this is commonly the **RDMA / cluster data-plane** NIC. **`UP` / `LOWER_UP`** here is **expected** once OCI brings the interface up. The **`rdma_auth`** role defaults to **`rdma_interface=eth2`** in **`configure-rhel-rdma.yml`**.
+- **eth1 / eth3** — may appear; **`NO-CARRIER`** on an unused NIC is often normal.
+
+You **do not** need to change Terraform merely because **eth2 is up**; that matches the documented OCI HPC / RDMA layout for this class of bare metal.
 
 **RDMA re-auth timer (on a BM node):**
 
@@ -324,13 +380,18 @@ sudo tail -n 100 /var/log/oci-cn-auth-cron.log
 - **`Permission denied (publickey)` / RSA key refused:** Newer **OpenSSH** may disable **`ssh-rsa`** user keys even though OCI still injects them. Current stacks add **`/etc/ssh/sshd_config.d/98-oci-allow-rsa-userkeys.conf`** on the head so metadata RSA keys work; if the head predates that, **replace the head** after updating the stack, or use the workarounds in **`docs/HEAD-BM-SSH-README.md`**.
 - **Terraform output key:** You can use **`terraform output -raw cluster_ssh_private_key_openssh`** to retrieve the cluster SSH private key when documented in outputs; protect the file like any other private key.
 
-**If `/opt/oci-hpc-ansible` or the bootstrap log is missing:** The head was launched without Ansible `user_data` (**`run_ansible_from_head`** was **false**, or the head is older). Enable **`run_ansible_from_head`**, then **replace the head** so cloud-init runs again (`terraform apply -replace=oci_core_instance.head_node` or equivalent in Resource Manager). Check **`sudo cloud-init status`** and **`/var/log/cloud-init-output.log`** if the script did not run.
+**If `/opt/oci-hpc-ansible` or the bootstrap log is missing:** Either **`run_ansible_from_head`** was **false**, the head predates the fix, or **cloud-init `write_files` failed** (see **`/var/log/cloud-init-output.log`**). Use a current stack revision (playbooks via **Object Storage** + **`curl`** on the head), ensure **`run_ansible_from_head = true`**, then **replace the head** so first-boot **`user_data` runs again: `terraform apply -replace=oci_core_instance.head_node` (or recreate the head in Resource Manager). Manual recovery without replacing the head → top of **`docs/HEAD-BM-SSH-README.md`**.
 
 **Troubleshooting** (SSH, timeouts, Ansible, `/etc/hosts`) → **[STACK-REFERENCE.md](STACK-REFERENCE.md#troubleshooting)**.
+
+</details>
 
 ---
 
 ## Reference
+
+<details>
+<summary><strong>Reference</strong> — Docs in this repo, external links, license</summary>
 
 ### Documentation in this repository
 
@@ -355,3 +416,5 @@ sudo tail -n 100 /var/log/oci-cn-auth-cron.log
 ### License
 
 This stack is based on the Oracle Quickstart OCI HPC Stack and follows similar licensing terms.
+
+</details>

@@ -18,13 +18,17 @@ Bare metal capacity is **regional and per availability domain (AD)**. Try:
 
 On the **head**, **`cat ~/README.md`** has a short reminder. Full **RDMA re-auth** checks on a **BM node** (SSH from the head) are in **[README.md, Step 5](README.md#step-5-log-in-and-verify)** (systemd timer, script path, rerun playbook from `/opt/oci-hpc-ansible` if needed).
 
+## On the BM, `ip a` shows eth2 up (and maybe eth3 NO-CARRIER). Do I need to change Terraform?
+
+**Usually no.** **eth0** is the primary **VCN** IP you use for SSH. **eth2** is commonly the **RDMA / cluster data-plane** NIC on shapes like **BM.Optimized3**; **`UP` / `LOWER_UP`** there is **normal** once OCI brings the link up. **eth3** with **NO-CARRIER** is often an unused port. The stack playbook defaults to **`rdma_interface=eth2`**. See the same **Step 5** section in **[README.md](README.md#step-5-log-in-and-verify)**.
+
 ## The custom RHEL image fails to launch (404 / not found)
 
 Custom images are **regional**. Use an image that was **imported in the same region** where you deploy the stack. An image OCID from another region will not work.
 
 ## Ansible folder or bootstrap log is missing on the head (`/opt/oci-hpc-ansible`)
 
-The head only runs Ansible **cloud-init** on **first boot**. If **Run Ansible from head** was **off** when the head was created, or the head is from an older configuration, turn the variable **on** and **replace the head instance** so cloud-init runs again. See **[STACK-REFERENCE.md](STACK-REFERENCE.md)** troubleshooting.
+The head only runs Ansible **cloud-init** on **first boot**. If **Run Ansible from head** was **off**, the head predates the stack, or **`write_files` failed** in **`/var/log/cloud-init-output.log`**, you will not get **`/opt/oci-hpc-ansible`**. Use a **current** stack (playbooks delivered via **Object Storage** + **`curl`** on the head), enable **Run Ansible from head**, **replace the head**, or follow the manual path at the top of **`docs/HEAD-BM-SSH-README.md`**. See **[STACK-REFERENCE.md](STACK-REFERENCE.md)** troubleshooting.
 
 ## I cannot SSH from the head to the bare metal nodes
 

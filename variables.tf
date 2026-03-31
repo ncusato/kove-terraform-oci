@@ -194,6 +194,12 @@ variable "rdma_ping_target" {
   default     = ""
 }
 
+variable "head_ansible_playbooks_url" {
+  type        = string
+  description = "HTTPS URL for playbooks.zip (same layout as Terraform's ./playbooks archive; configure-rhel-rdma.yml at zip root). Leave empty (default): Terraform uploads playbooks.zip to Object Storage (anonymous object read) and the head curls it at boot. Set explicitly to use an internal mirror or a PAR. Avoids embedding the zip in user_data (OCI ~32KB metadata / cloud-init write_files issues)."
+  default     = ""
+}
+
 variable "instance_ssh_user" {
   type        = string
   description = "SSH user for BM nodes in Ansible inventory. Default cloud-user for this RHEL image flow."

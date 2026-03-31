@@ -84,7 +84,7 @@ locals {
 
 **SSH to BMs:** `ssh cloud-user@<BM_private_ip>` (use stack Outputs for IPs; user may be `opc` on some images).
 
-**Passwordless SSH from this head:** Git repo `docs/HEAD-BM-SSH-README.md` or `scripts/setup_bm_passwordless_ssh.sh`.
+**Passwordless SSH from this head:** See `docs/HEAD-BM-SSH-README.md`; script is `playbooks/scripts/setup_bm_passwordless_ssh.sh` (on head: `/opt/oci-hpc-ansible/scripts/` after bootstrap).
 
 **RDMA on a BM:** `sudo systemctl status oci-cn-auth-refresh.timer`. If missing: `cd /opt/oci-hpc-ansible` then `sudo /usr/local/bin/ansible-playbook -i inventory/hosts configure-rhel-rdma.yml --limit bm`.
 
@@ -361,13 +361,37 @@ EOT
     tenancy_ocid        = var.tenancy_ocid
     instance_ssh_user   = var.instance_ssh_user
     head_node_ssh_user  = var.head_node_ssh_user != "" ? var.head_node_ssh_user : "opc"
-    payload_b64         = filebase64(data.archive_file.playbooks[0].output_path)
     extra_vars_b64      = base64encode(local.extra_vars_yaml)
     rhsm_username_b64   = base64encode(var.rhsm_username)
     rhsm_password_b64   = base64encode(var.rhsm_password)
     bm_private_ips_csv  = local.bm_private_ips_csv
     ssh_private_key_b64 = base64encode(tls_private_key.cluster_ssh.private_key_openssh)
   } : {}
+
+  # OCI caps combined instance metadata (~32KB). Default: Terraform uploads playbooks.zip to Object Storage
+  # (public object read) and the head curls it—no embedded zip in user_data. Override with head_ansible_playbooks_url.
+  auto_playbooks_oss = var.run_ansible_from_head && trimspace(var.head_ansible_playbooks_url) == ""
+
+  ansible_playbooks_bucket_name = "kove-hpb-${substr(md5("${var.compartment_ocid}:${var.tenancy_ocid}:${var.region}:${local.naming_prefix}"), 0, 18)}"
+
+  oss_playbooks_http_url = local.auto_playbooks_oss ? format(
+    "https://objectstorage.%s.oraclecloud.com/n/%s/b/%s/o/playbooks.zip",
+    var.region,
+    data.oci_objectstorage_namespace.tenancy_namespace.namespace,
+    local.ansible_playbooks_bucket_name,
+  ) : ""
+
+  playbooks_effective_url = trimspace(var.head_ansible_playbooks_url) != "" ? trimspace(var.head_ansible_playbooks_url) : local.oss_playbooks_http_url
+
+  playbooks_via_url = var.run_ansible_from_head && local.playbooks_effective_url != ""
+
+  head_bootstrap_rendered = var.run_ansible_from_head ? replace(replace(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars), "\r\n", "\n"), "\r", "\n") : ""
+  head_bootstrap_b64      = var.run_ansible_from_head ? base64encode(local.head_bootstrap_rendered) : ""
+  # Multiline base64 avoids single huge YAML lines that break some cloud-init / PyYAML builds on first boot.
+  head_bootstrap_b64_yaml = local.head_bootstrap_b64 != "" ? join("\n", [for line in regexall(".{1,76}", local.head_bootstrap_b64) : "      ${line}"]) : ""
+
+  playbooks_zip_raw_b64 = var.run_ansible_from_head && !local.playbooks_via_url ? filebase64(data.archive_file.playbooks[0].output_path) : ""
+  playbooks_zip_b64_yaml = local.playbooks_zip_raw_b64 != "" ? join("\n", [for line in regexall(".{1,76}", local.playbooks_zip_raw_b64) : "      ${line}"]) : ""
 }
 
 # -------------------------------------------------------------------
@@ -378,7 +402,11 @@ resource "oci_core_instance" "head_node" {
   compartment_id      = var.compartment_ocid
   availability_domain = local.head_node_ad
   # After BM nodes exist (Ansible bootstrap needs OCIDs / private IPs in user_data).
-  depends_on = [time_sleep.wait_bm_instances]
+  # When playbooks come from auto Object Storage, the object must exist before the head boots and curls it.
+  depends_on = concat(
+    [time_sleep.wait_bm_instances],
+    local.auto_playbooks_oss ? [oci_objectstorage_object.ansible_playbooks_zip[0]] : [],
+  )
 
   display_name = local.head_name
   shape        = "VM.Standard.E6.Flex"
@@ -409,12 +437,14 @@ resource "oci_core_instance" "head_node" {
     { ssh_authorized_keys = local.cluster_ssh_authorized_keys },
     {
       user_data = base64encode(replace(replace(templatefile("${path.module}/scripts/cloud_init_head.yaml.tpl", {
-        run_bootstrap          = var.run_ansible_from_head
-        bootstrap_script_b64   = var.run_ansible_from_head ? base64encode(replace(replace(templatefile("${path.module}/scripts/head_bootstrap.sh.tpl", local.bootstrap_template_vars), "\r\n", "\n"), "\r", "\n")) : ""
-        authorized_keys_b64    = base64encode(local.cluster_ssh_authorized_keys)
-        head_ssh_user          = trimspace(var.head_node_ssh_user) != "" ? trimspace(var.head_node_ssh_user) : "opc"
-        playbooks_zip_b64      = var.run_ansible_from_head ? filebase64(data.archive_file.playbooks[0].output_path) : ""
-        head_home_readme_b64   = base64encode(replace(replace(local.head_home_readme_markdown, "\r\n", "\n"), "\r", "\n"))
+        run_bootstrap             = var.run_ansible_from_head
+        playbooks_via_url         = local.playbooks_via_url
+        playbooks_url             = local.playbooks_effective_url
+        bootstrap_script_b64_yaml = local.head_bootstrap_b64_yaml
+        authorized_keys_b64       = base64encode(local.cluster_ssh_authorized_keys)
+        head_ssh_user             = trimspace(var.head_node_ssh_user) != "" ? trimspace(var.head_node_ssh_user) : "opc"
+        playbooks_zip_b64_yaml    = local.playbooks_zip_b64_yaml
+        head_home_readme_b64        = base64encode(replace(replace(local.head_home_readme_markdown, "\r\n", "\n"), "\r", "\n"))
       }), "\r\n", "\n"), "\r", "\n"))
     }
   )

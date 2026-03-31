@@ -26,13 +26,17 @@ write_files:
     owner: ${head_ssh_user}:${head_ssh_user}
     permissions: '0644'
 %{ if run_bootstrap ~}
-  # Playbooks zip as its own file avoids embedding ~9KB base64 inside the bootstrap script (which is itself base64 in user_data — that double chain blew past OCI's 32KiB metadata limit).
+  # Playbooks: embedded as multiline base64 (see main.tf) or downloaded when playbooks_via_url (saves user_data for OCI ~32KB combined metadata).
+%{ if !playbooks_via_url ~}
   - path: /opt/oci-hpc-playbooks.zip
-    content: ${playbooks_zip_b64}
+    content: |
+${playbooks_zip_b64_yaml}
     encoding: b64
     permissions: '0644'
+%{ endif ~}
   - path: /opt/oci-hpc-bootstrap.sh
-    content: ${bootstrap_script_b64}
+    content: |
+${bootstrap_script_b64_yaml}
     encoding: b64
     permissions: '0755'
 %{ endif ~}
@@ -40,5 +44,8 @@ runcmd:
   - bash /opt/oci-write-authorized-keys.sh
   - test -d /etc/ssh/sshd_config.d && (systemctl try-reload-or-restart sshd 2>/dev/null || service sshd reload 2>/dev/null || true)
 %{ if run_bootstrap ~}
+%{ if playbooks_via_url ~}
+  - [ curl, -fSL, --connect-timeout, "30", --retry, "3", -o, /opt/oci-hpc-playbooks.zip, "${playbooks_url}" ]
+%{ endif ~}
   - bash /opt/oci-hpc-bootstrap.sh
 %{ endif ~}

@@ -1,5 +1,5 @@
 # Copy to ~/kove-bm-bootstrap.conf on the head node and edit.
-# This drives scripts/setup_bm_passwordless_ssh.sh.
+# This drives setup_bm_passwordless_ssh.sh (on the head: /opt/oci-hpc-ansible/scripts/).
 
 # Same private key you use from your laptop to login to head/bastion.
 BOOTSTRAP_KEY_PATH=~/.ssh/head_login_key

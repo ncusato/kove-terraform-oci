@@ -8,6 +8,11 @@ output "head_node_public_ip" {
   value       = oci_core_instance.head_node.public_ip
 }
 
+output "head_ansible_playbooks_effective_url" {
+  description = "HTTPS URL the head uses to download playbooks.zip at boot (custom head_ansible_playbooks_url or auto Object Storage). Empty when run_ansible_from_head is false."
+  value       = local.playbooks_effective_url
+}
+
 # Same ED25519 private key Ansible/bootstrap installs on the head for BM access; also in metadata as second authorized_key.
 output "cluster_ssh_private_key_openssh" {
   description = "If ssh opc@head rejects your RSA key (OpenSSH 9+): save to a file, chmod 600, then ssh -i thatfile opc@<head_node_public_ip>"
