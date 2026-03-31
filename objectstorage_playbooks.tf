@@ -12,7 +12,7 @@ resource "oci_objectstorage_bucket" "ansible_playbooks" {
   compartment_id     = var.compartment_ocid
   namespace          = data.oci_objectstorage_namespace.tenancy_namespace.namespace
   name               = local.ansible_playbooks_bucket_name
-  public_access_type = "ObjectRead"
+  access_type = "ObjectRead"
 }
 
 resource "oci_objectstorage_object" "ansible_playbooks_zip" {

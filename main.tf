@@ -404,13 +404,12 @@ resource "oci_core_instance" "head_node" {
   compartment_id      = var.compartment_ocid
   availability_domain = local.head_node_ad
   # After BM nodes exist (Ansible bootstrap needs OCIDs / private IPs in user_data).
-  # When playbooks come from auto Object Storage, the object must exist before the head boots and curls it.
-  depends_on = concat(
-    [time_sleep.wait_bm_instances],
-    local.auto_playbooks_oss ? [oci_objectstorage_object.ansible_playbooks_zip[0]] : [],
-  )
+  # depends_on must be a static list (no concat). When playbooks zip is auto-uploaded to Object Storage,
+  # freeform_tags below references that object so Terraform creates the object before the head.
+  depends_on = [time_sleep.wait_bm_instances]
 
   display_name = local.head_name
+  freeform_tags = local.auto_playbooks_oss ? { "kove_ansible_playbooks_object" = oci_objectstorage_object.ansible_playbooks_zip[0].id } : {}
   shape        = "VM.Standard.E6.Flex"
 
   shape_config {
