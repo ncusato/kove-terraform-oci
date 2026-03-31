@@ -1,10 +1,8 @@
-# Merge when testing STIG-hardened RHEL 8.10 (Phoenix example image).
-#   terraform plan  -var-file=terraform.tfvars -var-file=stig-rhel810.overrides.tfvars
-#   terraform apply -var-file=terraform.tfvars -var-file=stig-rhel810.overrides.tfvars
-#
-# Set head_node_ssh_user to the login user your image uses (often cloud-user on OCI RHEL).
+# STIG / custom RHEL image on bare metal only. Head uses default Oracle Linux 8 (empty head_node_image_ocid).
+#   terraform apply -var-file=stig-rhel810.overrides.tfvars
+# Optional AD for capacity:
+# availability_domain = "pILZ:PHX-AD-2"
 
-head_node_image_ocid = "ocid1.image.oc1.phx.aaaaaaaaovxr5zbjsnhh4jiygg3txy4jv263nd4wxxrdghp5ldp3jtp7w2hq"
+head_node_image_ocid = ""
 bm_node_image_ocid   = "ocid1.image.oc1.phx.aaaaaaaaovxr5zbjsnhh4jiygg3txy4jv263nd4wxxrdghp5ldp3jtp7w2hq"
-head_node_ssh_user   = "cloud-user"
-# rhel_subscription_release defaults to 8.10 in Terraform; set explicitly only if needed.
+# head_node_ssh_user comes from terraform.tfvars (opc) when head is Oracle Linux.
