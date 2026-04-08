@@ -1,5 +1,10 @@
 # RDMA platform stack
 
+[![Deploy to Oracle Cloud (tag)](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/tags/Kove-Infra-OCI.zip)
+[![Deploy to Oracle Cloud (master)](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip)
+
+**Resource Manager:** use the **full repo** zip from the button, then set **Working directory** to `<zip-root>/stig-hardened-builds/rdma-platform` (e.g. `kove-terraform-oci-master/stig-hardened-builds/rdma-platform`). BM bootstrap needs repo-root [`scripts/`](../../scripts/README.md) (`bm_imds_ssh_bootstrap.sh`).
+
 Terraform stack for an optional **bastion** (public subnet), a **management VM** (private subnet), and a **BM.Optimized3** plane: **one control** plus **N memory nodes** on a compute cluster in an **RDMA-oriented private subnet**. Networking can be **created** (one VCN, three `/24` subnets) or **existing** (you supply three subnet OCIDs).
 
 This lives under `stig-hardened-builds/rdma-platform` so the original cluster stack at the repo root stays unchanged.
@@ -43,7 +48,7 @@ Outputs include bastion public IP (if enabled), management private IP, BM privat
 
 ## Bare metal bootstrap script path
 
-User data references `../../scripts/bm_imds_ssh_bootstrap.sh` relative to this stack directory.
+User data references `../../scripts/bm_imds_ssh_bootstrap.sh` relative to this stack directory. See [`scripts/README.md`](../../scripts/README.md) for how this fits the rest of the repo.
 
 ## Cloud-init and RHSM secrets (management VM)
 
