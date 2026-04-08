@@ -1,0 +1,51 @@
+# Copy to terraform.tfvars (or use -var-file) and fill in. Do not commit secrets.
+#
+# Sensitive values (RHSM, etc.): copy secrets.auto.tfvars.example → secrets.auto.tfvars
+# in this same directory; Terraform loads *.auto.tfvars automatically.
+
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+region           = "us-phoenix-1"
+compartment_ocid = "ocid1.compartment.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+ssh_public_key = "ssh-ed25519 AAAA...your-key... comment"
+
+# Optional naming and tags
+name_prefix = "kove-rdma"
+tags = {
+  project = "rdma-platform"
+}
+
+# New VCN (default): 10.0.1.0/24 public, 10.0.2.0/24 mgmt, 10.0.3.0/24 RDMA
+# use_existing_vcn = false
+
+# Or use three existing subnets (+ VCN OCID):
+# use_existing_vcn              = true
+# existing_vcn_id               = "ocid1.vcn.oc1..aaaa"
+# existing_public_subnet_id     = "ocid1.subnet.oc1..aaaa"
+# existing_management_subnet_id = "ocid1.subnet.oc1..aaaa"
+# existing_rdma_subnet_id       = "ocid1.subnet.oc1..aaaa"
+
+# Pin AD if needed (otherwise derived from RDMA subnet, then mgmt, then public, then first tenancy AD):
+# availability_domain = "pILZ:PHX-AD-2"
+
+# Bare metal custom image (control + all memory nodes)
+bm_node_image_ocid = "ocid1.image.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+# Scale memory nodes (control is always 1). Default 2 → 3 BM instances total.
+memory_node_count = 2
+
+# Optional bastion (Oracle Linux 8 by default on VM.Standard.E6.Flex)
+# enable_bastion = true
+# bastion_ocpus         = 2
+# bastion_memory_gbs    = 16
+
+# Management VM defaults: 2 OCPU / 16 GB
+# management_ocpus      = 2
+# management_memory_gbs = 16
+
+# Capacity / STIG images
+# bm_capacity_reservation_id = "ocid1.."
+# bm_imds_ssh_key_bootstrap  = true
+
+# Serial console over SSH tunnel (optional)
+# create_bm_console_connections = false

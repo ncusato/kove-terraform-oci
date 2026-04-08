@@ -1,0 +1,102 @@
+#cloud-config
+package_update: false
+package_upgrade: false
+
+write_files:
+  - path: /usr/local/sbin/runtime-guardrail.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+      exec > >(tee -a /var/log/runtime-guardrail.log) 2>&1
+
+      USER_NAME="cloud-user"
+      RHSM_ORG_ID=${jsonencode(rhsm_org_id)}
+      RHSM_ACTIVATION_KEY=${jsonencode(rhsm_activation_key)}
+
+      # Optional: URL to playbooks.zip (set playbooks_zip_url in Terraform; leave empty to skip)
+      PLAYBOOKS_ZIP_URL=${jsonencode(playbooks_zip_url)}
+
+      # Expected RDMA interface for BM.Optimized3.*
+      RDMA_IFACE="eth2"
+
+      if ! id "$${USER_NAME}" >/dev/null 2>&1; then
+        useradd -m -s /bin/bash "$${USER_NAME}"
+      fi
+
+      echo "$${USER_NAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-cloud-user
+      chmod 440 /etc/sudoers.d/90-cloud-user
+      visudo -cf /etc/sudoers
+
+      # RHSM
+      if ! subscription-manager identity >/dev/null 2>&1; then
+        if [[ "$${RHSM_ORG_ID}" =~ ^[0-9]+$ ]]; then
+          subscription-manager register --org="$${RHSM_ORG_ID}" --activationkey="$${RHSM_ACTIVATION_KEY}" || true
+        fi
+      fi
+      subscription-manager refresh || true
+
+      # Core packages
+      dnf -y install \
+        python3 jq unzip curl \
+        rdma-core libibverbs infiniband-diags librdmacm-utils \
+        oci-cli ansible-core || true
+
+      # Optional helper (avoid break on version skew)
+      dnf -y install libibverbs-utils --nobest || true
+
+      # Pull playbooks bundle if provided
+      if [[ -n "$${PLAYBOOKS_ZIP_URL}" ]]; then
+        mkdir -p /opt/oci-hpc-ansible
+        curl -fL "$${PLAYBOOKS_ZIP_URL}" -o /tmp/playbooks.zip
+        unzip -o /tmp/playbooks.zip -d /opt/oci-hpc-ansible
+      fi
+
+      # If playbook exists, run local RDMA config once
+      if [[ -f /opt/oci-hpc-ansible/configure-rhel-rdma.yml ]]; then
+        ansible-playbook -i "localhost," -c local \
+          /opt/oci-hpc-ansible/configure-rhel-rdma.yml \
+          -e "rdma_interface=$${RDMA_IFACE}" || true
+      fi
+
+      # Ensure RDMA auth refresh is active if script was installed by playbook
+      if [[ -f /usr/local/bin/oci-cn-auth-refresh.sh ]]; then
+        # Create units only if not already present
+        if [[ ! -f /etc/systemd/system/oci-cn-auth-refresh.service ]]; then
+          cat >/etc/systemd/system/oci-cn-auth-refresh.service <<'EOF'
+      [Unit]
+      Description=OCI RDMA auth refresh
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/oci-cn-auth-refresh.sh
+      EOF
+        fi
+
+        if [[ ! -f /etc/systemd/system/oci-cn-auth-refresh.timer ]]; then
+          cat >/etc/systemd/system/oci-cn-auth-refresh.timer <<'EOF'
+      [Unit]
+      Description=Run OCI RDMA auth refresh periodically
+
+      [Timer]
+      OnBootSec=2min
+      OnUnitActiveSec=15min
+      Unit=oci-cn-auth-refresh.service
+
+      [Install]
+      WantedBy=timers.target
+      EOF
+        fi
+
+        systemctl daemon-reload
+        systemctl enable --now oci-cn-auth-refresh.timer || true
+      fi
+
+      # Final guardrail re-assertion
+      echo "$${USER_NAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-cloud-user
+      chmod 440 /etc/sudoers.d/90-cloud-user
+      visudo -cf /etc/sudoers
+
+runcmd:
+  - /usr/local/sbin/runtime-guardrail.sh
