@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars (gitignored at repo root) and edit.
+
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+region           = "us-ashburn-1"
+compartment_ocid = "ocid1.compartment.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+ssh_public_key = <<-EOT
+ssh-ed25519 AAAA...your-key... comment
+EOT
+
+name_prefix = "kove-oke"
+
+# Avoid overlapping the rdma-platform default VCN (10.0.0.0/16)
+# vcn_cidr_block = "10.20.0.0/16"
+
+# node_pool_size   = 3
+# node_pool_shape  = "VM.Standard.E6.Flex"
+# node_pool_ocpus  = 2
+# node_pool_memory_gbs = 16
+
+# Pin version or leave empty for newest supported in region
+# kubernetes_version = "v1.31.1"
+
+# Optional: custom worker image (otherwise first OKE node image from data source)
+# worker_image_id = "ocid1.image.oc1.iad.aaaa..."
+
+# Private API endpoint only (no public IP on control plane)
+# public_control_plane_endpoint = false

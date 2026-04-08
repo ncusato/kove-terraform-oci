@@ -2,7 +2,7 @@
 
 Terraform stack for an optional **bastion** (public subnet), a **management VM** (private subnet), and a **BM.Optimized3** plane: **one control** plus **N memory nodes** on a compute cluster in an **RDMA-oriented private subnet**. Networking can be **created** (one VCN, three `/24` subnets) or **existing** (you supply three subnet OCIDs).
 
-This lives under `stacks/rdma-platform` so the original cluster stack at the repo root stays unchanged.
+This lives under `stig-hardened-builds/rdma-platform` so the original cluster stack at the repo root stays unchanged.
 
 ## Layout
 
@@ -25,7 +25,7 @@ New VCN CIDR defaults to `10.0.0.0/16` (`vcn_cidr_block`). Adjust `vcn_cidr_bloc
 ## Usage
 
 ```bash
-cd stacks/rdma-platform
+cd stig-hardened-builds/rdma-platform
 terraform init
 cp terraform.tfvars.example terraform.tfvars
 cp secrets.auto.tfvars.example secrets.auto.tfvars   # RHSM and other sensitive vars; gitignored

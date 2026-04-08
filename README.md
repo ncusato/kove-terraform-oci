@@ -16,8 +16,13 @@ This is a **RHEL** deployment on OCI bare metal with **RDMA authentication** for
   - [Step 5 — Log in and verify](#step-5--log-in-and-verify)
 - [Reference](#reference)
 - [FAQ](FAQ.md)
+- [STIG-hardened builds (extra Terraform stacks)](#stig-hardened-builds-extra-terraform-stacks)
 
 Sections use **`<details>`** blocks and are **collapsed by default** on GitHub; click a summary row to expand. Links above scroll to the right place—you may still need to open the block to read it.
+
+## STIG-hardened builds (extra Terraform stacks)
+
+Outside this root module, **`stig-hardened-builds/`** contains additional Terraform roots: **`rdma-platform/`** (bastion, management VM, BM.Optimized3 plane) and **`oke-cluster/`** (OKE + worker pool). See [`stig-hardened-builds/README.md`](stig-hardened-builds/README.md).
 
 ---
 
