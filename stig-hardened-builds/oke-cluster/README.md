@@ -1,8 +1,10 @@
 # OKE cluster (starter stack)
 
-[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/tags/Kove-Infra-OCI.zip)
+[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip)
 
-**Resource Manager:** use the **full repo** zip from the button, then set **Working directory** to `<zip-root>/stig-hardened-builds/oke-cluster` (for the tag zip, `<zip-root>` is usually `kove-terraform-oci-Kove-Infra-OCI`). For `master.zip`, use the same path under `kove-terraform-oci-master/…`.
+**Resource Manager:** the button pulls **`master.zip`** from GitHub. Set **Working directory** to `kove-terraform-oci-master/stig-hardened-builds/oke-cluster` (GitHub names the folder `kove-terraform-oci-<branch>`).
+
+**Shape parity with `rdma-platform`:** worker nodes use the same **VM** sizing as that stack’s **bastion** and **management** hosts: **`VM.Standard.E6.Flex`**, **2 OCPU**, **16 GB** (`node_pool_shape`, `node_pool_ocpus`, `node_pool_memory_gbs`). Bare metal (**`BM.Optimized3.36`**) is only in `rdma-platform`, not in this OKE pool.
 
 Terraform root that creates a **dedicated VCN** and an **Oracle Kubernetes Engine (OKE)** cluster with:
 

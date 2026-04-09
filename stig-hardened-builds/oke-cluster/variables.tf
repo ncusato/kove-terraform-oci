@@ -44,23 +44,25 @@ variable "availability_domain" {
 
 variable "node_pool_shape" {
   type        = string
-  description = "Worker shape (Flex shapes need node_pool_ocpus / node_pool_memory_gbs)"
+  description = "Worker shape — kept in lockstep with stig-hardened-builds/rdma-platform bastion/management (VM.Standard.E6.Flex)."
   default     = "VM.Standard.E6.Flex"
 }
 
 variable "node_pool_ocpus" {
-  type    = number
-  default = 2
+  type        = number
+  description = "Matches rdma-platform bastion_ocpus / management_ocpus default (2)."
+  default     = 2
 }
 
 variable "node_pool_memory_gbs" {
-  type    = number
-  default = 16
+  type        = number
+  description = "Matches rdma-platform bastion_memory_gbs / management_memory_gbs default (16)."
+  default     = 16
 }
 
 variable "node_pool_size" {
   type        = number
-  description = "Worker count (single placement config / one AD)"
+  description = "Worker count (single AD). Default 3 aligns with rdma-platform default BM footprint (1 control + 2 memory nodes = 3 hosts), not shape-for-shape on bare metal."
   default     = 3
 
   validation {

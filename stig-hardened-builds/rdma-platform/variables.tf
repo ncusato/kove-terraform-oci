@@ -89,19 +89,19 @@ variable "enable_bastion" {
 
 variable "bastion_shape" {
   type        = string
-  description = "Bastion compute shape"
+  description = "Bastion compute shape (same VM family as stig-hardened-builds/oke-cluster worker node_pool_shape)."
   default     = "VM.Standard.E6.Flex"
 }
 
 variable "bastion_ocpus" {
   type        = number
-  description = "Bastion OCPUs (E6.Flex)"
+  description = "Bastion OCPUs (E6.Flex); matches oke-cluster node_pool_ocpus default."
   default     = 2
 }
 
 variable "bastion_memory_gbs" {
   type        = number
-  description = "Bastion memory in GB (E6.Flex)"
+  description = "Bastion memory in GB (E6.Flex); matches oke-cluster node_pool_memory_gbs default."
   default     = 16
 }
 
@@ -115,18 +115,21 @@ variable "bastion_image_ocid" {
 # Management VM (private subnet 1)
 # ---------------------------------------------------------------------------
 variable "management_shape" {
-  type    = string
-  default = "VM.Standard.E6.Flex"
+  type        = string
+  description = "Same VM shape as oke-cluster workers by default (VM.Standard.E6.Flex)."
+  default     = "VM.Standard.E6.Flex"
 }
 
 variable "management_ocpus" {
-  type    = number
-  default = 2
+  type        = number
+  description = "Matches oke-cluster node_pool_ocpus default (2)."
+  default     = 2
 }
 
 variable "management_memory_gbs" {
-  type    = number
-  default = 16
+  type        = number
+  description = "Matches oke-cluster node_pool_memory_gbs default (16)."
+  default     = 16
 }
 
 variable "management_image_ocid" {
@@ -176,7 +179,7 @@ variable "cloud_init_template_extra_vars" {
 # ---------------------------------------------------------------------------
 variable "bm_node_shape" {
   type        = string
-  description = "Bare metal shape for control and memory nodes"
+  description = "Bare metal shape for control and memory nodes (oke-cluster uses VM.Standard.E6.Flex workers only; no BM in OKE node pool)."
   default     = "BM.Optimized3.36"
 }
 

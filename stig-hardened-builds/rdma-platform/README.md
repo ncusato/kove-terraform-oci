@@ -1,8 +1,10 @@
 # RDMA platform stack
 
-[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/tags/Kove-Infra-OCI.zip)
+[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip)
 
-**Resource Manager:** use the **full repo** zip from the button, then set **Working directory** to `<zip-root>/stig-hardened-builds/rdma-platform` (for the tag zip, `<zip-root>` is usually `kove-terraform-oci-Kove-Infra-OCI`). BM bootstrap needs repo-root [`scripts/`](../../scripts/README.md) (`bm_imds_ssh_bootstrap.sh`). For `master.zip` instead of the tag, use the same working directory under `kove-terraform-oci-master/…`.
+**Resource Manager:** the button pulls **`master.zip`**. Set **Working directory** to `kove-terraform-oci-master/stig-hardened-builds/rdma-platform`. BM bootstrap needs repo-root [`scripts/`](../../scripts/README.md) (`bm_imds_ssh_bootstrap.sh`).
+
+**VM sizing (bastion / management):** **`VM.Standard.E6.Flex`**, **2 OCPU**, **16 GB** — the same defaults as **`oke-cluster`** worker nodes. Bare metal nodes use **`BM.Optimized3.36`** (`bm_node_shape`).
 
 Terraform stack for an optional **bastion** (public subnet), a **management VM** (private subnet), and a **BM.Optimized3** plane: **one control** plus **N memory nodes** on a compute cluster in an **RDMA-oriented private subnet**. Networking can be **created** (one VCN, three `/24` subnets) or **existing** (you supply three subnet OCIDs).
 
