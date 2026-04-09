@@ -18,6 +18,16 @@ output "rdma_subnet_ocid" {
   value       = local.rdma_subnet_id
 }
 
+output "public_route_table_ocid" {
+  description = "Public route table when Terraform created the VCN (for attaching OKE API/LB subnets). Empty when use_existing_vcn is true on rdma-platform."
+  value       = length(oci_core_route_table.public) > 0 ? oci_core_route_table.public[0].id : ""
+}
+
+output "private_route_table_ocid" {
+  description = "Private (NAT) route table when Terraform created the VCN (for OKE worker subnet). Empty when use_existing_vcn is true on rdma-platform."
+  value       = length(oci_core_route_table.private) > 0 ? oci_core_route_table.private[0].id : ""
+}
+
 output "bastion_public_ip" {
   description = "Public IP when enable_bastion is true; null otherwise."
   value       = var.enable_bastion ? oci_core_instance.bastion[0].public_ip : null
@@ -71,16 +81,18 @@ output "bm_console_vnc_connection_strings" {
 }
 
 output "oke_prerequisites" {
-  description = "Subnet and compartment references for a future OKE or add-on stack (no NSGs created here)."
+  description = "Subnet, route tables, and compartment references for stig-hardened-builds/oke-cluster with use_existing_vcn (when this stack created the VCN)."
   value = {
-    compartment_ocid       = var.compartment_ocid
-    tenancy_ocid           = var.tenancy_ocid
-    region                 = var.region
-    vcn_id                 = local.vcn_id
-    public_subnet_ocid     = local.public_subnet_id
-    management_subnet_ocid = local.management_subnet_id
-    rdma_subnet_ocid       = local.rdma_subnet_id
-    nsg_ocids              = []
+    compartment_ocid            = var.compartment_ocid
+    tenancy_ocid                = var.tenancy_ocid
+    region                      = var.region
+    vcn_id                      = local.vcn_id
+    public_subnet_ocid          = local.public_subnet_id
+    management_subnet_ocid      = local.management_subnet_id
+    rdma_subnet_ocid            = local.rdma_subnet_id
+    public_route_table_ocid     = length(oci_core_route_table.public) > 0 ? oci_core_route_table.public[0].id : ""
+    private_route_table_ocid    = length(oci_core_route_table.private) > 0 ? oci_core_route_table.private[0].id : ""
+    nsg_ocids                   = []
   }
 }
 

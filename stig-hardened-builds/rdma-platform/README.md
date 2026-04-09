@@ -1,8 +1,8 @@
 # RDMA platform stack
 
-[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip)
+[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/releases/download/deploy-rdma-platform/rdma-platform.zip)
 
-**Resource Manager:** the button pulls **`master.zip`**. Set **Working directory** to `kove-terraform-oci-master/stig-hardened-builds/rdma-platform`. BM bootstrap needs repo-root [`scripts/`](../../scripts/README.md) (`bm_imds_ssh_bootstrap.sh`).
+**Resource Manager:** standalone zip from GitHub Actions ([`package-orm-rdma-platform.yml`](../../.github/workflows/package-orm-rdma-platform.yml)) — includes this stack **and** `scripts/bm_imds_ssh_bootstrap.sh` at the paths Terraform expects. Set **Working directory** to **`stig-hardened-builds/rdma-platform`**. If the link 404s, run that workflow or push under `stig-hardened-builds/rdma-platform/` (or change `scripts/bm_imds_ssh_bootstrap.sh`). Forks: change the `github.com/...` owner in the button URL.
 
 **VM sizing (bastion / management):** **`VM.Standard.E6.Flex`**, **2 OCPU**, **16 GB** — the same defaults as **`oke-cluster`** worker nodes. Bare metal nodes use **`BM.Optimized3.36`** (`bm_node_shape`).
 
@@ -49,7 +49,7 @@ Outputs include bastion public IP (if enabled), management private IP, BM privat
 
 ## Bare metal bootstrap script path
 
-User data references `../../scripts/bm_imds_ssh_bootstrap.sh` relative to this stack directory. See [`scripts/README.md`](../../scripts/README.md) for how this fits the rest of the repo.
+User data references `../../scripts/bm_imds_ssh_bootstrap.sh` relative to this stack directory. The **standalone ORM zip** repackages that script under `scripts/` so the path still resolves. See [`scripts/README.md`](../../scripts/README.md) for the full monorepo layout.
 
 ## Cloud-init and RHSM secrets (management VM)
 

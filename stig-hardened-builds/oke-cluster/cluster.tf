@@ -2,7 +2,7 @@ resource "oci_containerengine_cluster" "this" {
   compartment_id     = var.compartment_ocid
   kubernetes_version = local.k8s_version
   name               = "${var.name_prefix}-cluster"
-  vcn_id             = oci_core_virtual_network.oke.id
+  vcn_id             = local.effective_vcn_id
   freeform_tags      = local.common_tags
 
   cluster_pod_network_options {
@@ -31,9 +31,14 @@ resource "oci_containerengine_cluster" "this" {
 
   lifecycle {
     precondition {
-      condition     = local.worker_image_id_effective != ""
-      error_message = "No worker node image resolved: set worker_image_id or ensure node pool option sources include an IMAGE with image_id for this region."
+      condition = !var.use_existing_vcn || (
+        length(trimspace(var.existing_vcn_id)) > 0 &&
+        length(trimspace(var.existing_public_route_table_id)) > 0 &&
+        length(trimspace(var.existing_private_route_table_id)) > 0
+      )
+      error_message = "When use_existing_vcn is true, set existing_vcn_id, existing_public_route_table_id, and existing_private_route_table_id (from rdma-platform outputs when it created the VCN)."
     }
+
   }
 }
 
@@ -67,4 +72,11 @@ resource "oci_containerengine_node_pool" "workers" {
   }
 
   ssh_public_key = trimspace(replace(var.ssh_public_key, "\r", ""))
+
+  lifecycle {
+    precondition {
+      condition     = local.worker_image_id_effective != ""
+      error_message = "No worker node image resolved: set worker_image_id or ensure node pool option sources include an IMAGE with image_id for this cluster/region."
+    }
+  }
 }

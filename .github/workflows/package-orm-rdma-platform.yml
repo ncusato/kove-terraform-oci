@@ -1,0 +1,45 @@
+# Zip preserves paths so ${path.module}/../../scripts resolves (stack + scripts/).
+# Deploy button: releases/download/deploy-rdma-platform/rdma-platform.zip — working directory: stig-hardened-builds/rdma-platform
+name: Package ORM zip — RDMA platform
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "stig-hardened-builds/rdma-platform/**"
+      - "scripts/bm_imds_ssh_bootstrap.sh"
+      - ".github/workflows/package-orm-rdma-platform.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build zip (rdma stack + repo-root scripts for path.module)
+        run: |
+          mkdir -p build/stig-hardened-builds/rdma-platform build/scripts
+          cp -a stig-hardened-builds/rdma-platform/. build/stig-hardened-builds/rdma-platform/
+          cp -a scripts/bm_imds_ssh_bootstrap.sh build/scripts/
+          (cd build && zip -r "$RUNNER_TEMP/rdma-platform.zip" . \
+            -x '*.git*' -x '.terraform/**' -x '*.tfstate*')
+
+      - name: Replace release deploy-rdma-platform
+        run: gh release delete deploy-rdma-platform --cleanup-tag --yes || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: deploy-rdma-platform
+          name: ORM zip — RDMA platform
+          body: |
+            Subset of the monorepo: [`stig-hardened-builds/rdma-platform/`](../tree/master/stig-hardened-builds/rdma-platform) plus [`scripts/bm_imds_ssh_bootstrap.sh`](../tree/master/scripts/bm_imds_ssh_bootstrap.sh).
+
+            **Resource Manager working directory:** `stig-hardened-builds/rdma-platform`
+          files: ${{ runner.temp }}/rdma-platform.zip
+          fail_on_unmatched_files: true

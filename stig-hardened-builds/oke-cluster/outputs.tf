@@ -14,7 +14,8 @@ output "node_pool_id" {
 }
 
 output "vcn_id" {
-  value = oci_core_virtual_network.oke.id
+  description = "VCN hosting the cluster (dedicated OKE VCN or shared rdma VCN)."
+  value       = local.effective_vcn_id
 }
 
 output "kubeconfig_hint" {

@@ -1,0 +1,23 @@
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaa..."
+region           = "us-ashburn-1"
+compartment_ocid = "ocid1.compartment.oc1..aaaaaaaa..."
+
+name_prefix = "kove-hpc-net"
+
+# VCN 10.0.0.0/16 → public 10.0.1.0/24, private A 10.0.2.0/24, private B 10.0.3.0/24 (when layout = two)
+vcn_cidr_block = "10.0.0.0/16"
+
+# "Consolidate management and RDMA into one private subnet" | "Separate private subnets for management and RDMA" (default)
+private_subnet_layout = "Separate private subnets for management and RDMA"
+
+# Optional display name overrides (leave "" for defaults)
+# vcn_display_name              = ""
+# public_subnet_display_name    = ""
+# private_subnet_1_display_name = ""
+# private_subnet_2_display_name = ""
+
+# private_subnet_ssh_sources_extras = "203.0.113.0/24"
+
+tags = {
+  project = "hpc-networking"
+}

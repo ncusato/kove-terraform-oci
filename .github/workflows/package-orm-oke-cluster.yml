@@ -1,0 +1,39 @@
+# Standalone zip for OKE stack (terraform root = zip root).
+# Deploy button: releases/download/deploy-oke-cluster/oke-cluster.zip — working directory: (empty / root).
+name: Package ORM zip — OKE cluster
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "stig-hardened-builds/oke-cluster/**"
+      - ".github/workflows/package-orm-oke-cluster.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build zip (flat terraform root)
+        run: |
+          (cd stig-hardened-builds/oke-cluster && zip -r "$RUNNER_TEMP/oke-cluster.zip" . \
+            -x '*.git*' -x '.terraform/**' -x '*.tfstate*')
+
+      - name: Replace release deploy-oke-cluster
+        run: gh release delete deploy-oke-cluster --cleanup-tag --yes || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: deploy-oke-cluster
+          name: ORM zip — OKE cluster
+          body: |
+            Self-contained Terraform for [`stig-hardened-builds/oke-cluster/`](../tree/master/stig-hardened-builds/oke-cluster). **Resource Manager:** leave **working directory** empty.
+          files: ${{ runner.temp }}/oke-cluster.zip
+          fail_on_unmatched_files: true

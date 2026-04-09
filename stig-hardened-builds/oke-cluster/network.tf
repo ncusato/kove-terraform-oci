@@ -1,4 +1,5 @@
 resource "oci_core_virtual_network" "oke" {
+  count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
   cidr_block     = var.vcn_cidr_block
   display_name   = "${var.name_prefix}-vcn"
@@ -7,51 +8,54 @@ resource "oci_core_virtual_network" "oke" {
 }
 
 resource "oci_core_internet_gateway" "oke" {
+  count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
   display_name   = "${var.name_prefix}-igw"
   enabled        = true
-  vcn_id         = oci_core_virtual_network.oke.id
+  vcn_id         = oci_core_virtual_network.oke[0].id
   freeform_tags  = local.common_tags
 }
 
 resource "oci_core_nat_gateway" "oke" {
+  count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
   display_name   = "${var.name_prefix}-nat"
-  vcn_id         = oci_core_virtual_network.oke.id
+  vcn_id         = oci_core_virtual_network.oke[0].id
   freeform_tags  = local.common_tags
 }
 
 resource "oci_core_route_table" "public" {
+  count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
   display_name   = "${var.name_prefix}-public-rt"
-  vcn_id         = oci_core_virtual_network.oke.id
+  vcn_id         = oci_core_virtual_network.oke[0].id
   freeform_tags  = local.common_tags
 
   route_rules {
     destination       = "0.0.0.0/0"
     destination_type  = "CIDR_BLOCK"
-    network_entity_id = oci_core_internet_gateway.oke.id
+    network_entity_id = oci_core_internet_gateway.oke[0].id
   }
 }
 
 resource "oci_core_route_table" "private" {
+  count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
   display_name   = "${var.name_prefix}-private-rt"
-  vcn_id         = oci_core_virtual_network.oke.id
+  vcn_id         = oci_core_virtual_network.oke[0].id
   freeform_tags  = local.common_tags
 
   route_rules {
     destination       = "0.0.0.0/0"
     destination_type  = "CIDR_BLOCK"
-    network_entity_id = oci_core_nat_gateway.oke.id
+    network_entity_id = oci_core_nat_gateway.oke[0].id
   }
 }
 
-# Permissive intra-VCN + API / SSH patterns; tighten for production.
 resource "oci_core_security_list" "api" {
   compartment_id = var.compartment_ocid
   display_name   = "${var.name_prefix}-api-sl"
-  vcn_id         = oci_core_virtual_network.oke.id
+  vcn_id         = local.effective_vcn_id
   freeform_tags  = local.common_tags
 
   egress_security_rules {
@@ -90,7 +94,7 @@ resource "oci_core_security_list" "api" {
 resource "oci_core_security_list" "lb" {
   compartment_id = var.compartment_ocid
   display_name   = "${var.name_prefix}-lb-sl"
-  vcn_id         = oci_core_virtual_network.oke.id
+  vcn_id         = local.effective_vcn_id
   freeform_tags  = local.common_tags
 
   egress_security_rules {
@@ -100,7 +104,7 @@ resource "oci_core_security_list" "lb" {
 
   ingress_security_rules {
     protocol = "all"
-    source   = var.vcn_cidr_block
+    source   = local.effective_vcn_cidr
   }
 
   ingress_security_rules {
@@ -116,7 +120,7 @@ resource "oci_core_security_list" "lb" {
 resource "oci_core_security_list" "workers" {
   compartment_id = var.compartment_ocid
   display_name   = "${var.name_prefix}-worker-sl"
-  vcn_id         = oci_core_virtual_network.oke.id
+  vcn_id         = local.effective_vcn_id
   freeform_tags  = local.common_tags
 
   egress_security_rules {
@@ -126,7 +130,7 @@ resource "oci_core_security_list" "workers" {
 
   ingress_security_rules {
     protocol = "all"
-    source   = var.vcn_cidr_block
+    source   = local.effective_vcn_cidr
   }
 
   ingress_security_rules {
@@ -150,11 +154,11 @@ resource "oci_core_security_list" "workers" {
 
 resource "oci_core_subnet" "api" {
   compartment_id             = var.compartment_ocid
-  vcn_id                     = oci_core_virtual_network.oke.id
+  vcn_id                     = local.effective_vcn_id
   cidr_block                 = local.api_subnet_cidr
   display_name               = "${var.name_prefix}-k8s-api"
   dns_label                  = "k8sapi"
-  route_table_id             = oci_core_route_table.public.id
+  route_table_id             = local.public_route_table_id
   security_list_ids          = [oci_core_security_list.api.id]
   prohibit_public_ip_on_vnic = false
   freeform_tags              = local.common_tags
@@ -162,11 +166,11 @@ resource "oci_core_subnet" "api" {
 
 resource "oci_core_subnet" "lb" {
   compartment_id             = var.compartment_ocid
-  vcn_id                     = oci_core_virtual_network.oke.id
+  vcn_id                     = local.effective_vcn_id
   cidr_block                 = local.lb_subnet_cidr
   display_name               = "${var.name_prefix}-svc-lb"
   dns_label                  = "svclb"
-  route_table_id             = oci_core_route_table.public.id
+  route_table_id             = local.public_route_table_id
   security_list_ids          = [oci_core_security_list.lb.id]
   prohibit_public_ip_on_vnic = false
   freeform_tags              = local.common_tags
@@ -174,11 +178,11 @@ resource "oci_core_subnet" "lb" {
 
 resource "oci_core_subnet" "workers" {
   compartment_id             = var.compartment_ocid
-  vcn_id                     = oci_core_virtual_network.oke.id
+  vcn_id                     = local.effective_vcn_id
   cidr_block                 = local.worker_subnet_cidr
   display_name               = "${var.name_prefix}-workers"
-  dns_label                  = "workers"
-  route_table_id             = oci_core_route_table.private.id
+  dns_label                  = "k8swrkr"
+  route_table_id             = local.private_route_table_id
   security_list_ids          = [oci_core_security_list.workers.id]
   prohibit_public_ip_on_vnic = true
   freeform_tags              = local.common_tags

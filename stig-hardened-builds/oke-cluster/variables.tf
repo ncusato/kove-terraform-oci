@@ -26,8 +26,38 @@ variable "name_prefix" {
 
 variable "vcn_cidr_block" {
   type        = string
-  description = "Dedicated OKE VCN CIDR (avoid overlap with peered networks / rdma-platform 10.0.0.0/16)"
+  description = "Dedicated OKE VCN CIDR when use_existing_vcn is false. Ignored when attaching to an existing VCN (CIDR comes from data source)."
   default     = "10.20.0.0/16"
+}
+
+variable "use_existing_vcn" {
+  type        = bool
+  description = "true = create OKE subnets inside an existing VCN (e.g. stig-hardened-builds/rdma-platform). Supply route table OCIDs from rdma outputs."
+  default     = false
+}
+
+variable "existing_vcn_id" {
+  type        = string
+  description = "Existing VCN OCID (e.g. output vcn_id from rdma-platform)."
+  default     = ""
+}
+
+variable "existing_public_route_table_id" {
+  type        = string
+  description = "Public route table in that VCN (rdma output public_route_table_ocid when rdma created the VCN)."
+  default     = ""
+}
+
+variable "existing_private_route_table_id" {
+  type        = string
+  description = "Private NAT route table (rdma output private_route_table_ocid when rdma created the VCN)."
+  default     = ""
+}
+
+variable "oke_vcn_subnet_index_base" {
+  type        = number
+  description = "When use_existing_vcn: /24 index under the VCN CIDR for OKE API slice. Default 4 => 10.0.4.0/24 (and 10.0.5, 10.0.6 for LB/workers) in a /16 VCN where rdma uses indices 1–3."
+  default     = 4
 }
 
 variable "kubernetes_version" {

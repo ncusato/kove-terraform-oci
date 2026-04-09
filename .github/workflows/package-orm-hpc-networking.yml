@@ -1,0 +1,39 @@
+# Publishes a standalone zip for Oracle Resource Manager (terraform root = zip root).
+# Deploy button: releases/download/deploy-hpc-networking/hpc-networking.zip — working directory: (empty / root).
+name: Package ORM zip — HPC networking
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "hpc-networking/**"
+      - ".github/workflows/package-orm-hpc-networking.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build zip (flat terraform root)
+        run: |
+          (cd hpc-networking && zip -r "$RUNNER_TEMP/hpc-networking.zip" . \
+            -x '*.git*' -x '.terraform/**' -x '*.tfstate*')
+
+      - name: Replace release deploy-hpc-networking
+        run: gh release delete deploy-hpc-networking --cleanup-tag --yes || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: deploy-hpc-networking
+          name: ORM zip — HPC networking (standalone VCN)
+          body: |
+            Self-contained Terraform for [`hpc-networking/`](../tree/master/hpc-networking). **Resource Manager:** upload this zip; leave **working directory** empty (terraform files at archive root).
+          files: ${{ runner.temp }}/hpc-networking.zip
+          fail_on_unmatched_files: true

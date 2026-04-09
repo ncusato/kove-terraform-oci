@@ -1,0 +1,156 @@
+title: "HPC networking (VCN + routing + subnets)"
+description: "Creates a VCN with a public subnet (Internet gateway) and one or two private subnets (NAT). Matches the stig-hardened-builds/rdma-platform CIDR pattern when you choose separate management and RDMA subnets."
+informationalText: |
+  **CIDR plan (default VCN 10.0.0.0/16):**
+  - **Public** subnet: third octet **1** → 10.0.1.0/24 (route to Internet gateway).
+  - **Private (first)**: third octet **2** → 10.0.2.0/24 (NAT egress).
+  - **Private (second)** — only if you pick **Separate private subnets for management and RDMA**: third octet **3** → 10.0.3.0/24 (NAT egress).
+
+  If you pick **Consolidate management and RDMA into one private subnet**, only the public subnet and **one** private /24 (10.0.2.0/24) are created.
+
+  After **Apply**, open **Job outputs** and copy **`deployment_network_summary`** for a full list of names, CIDRs, and OCIDs. **`network_cidrs_map`** repeats the CIDRs in structured form.
+
+  Use the **Deploy to Oracle Cloud** button in **`hpc-networking/README.md`**: it downloads a **standalone** zip from GitHub Releases (`deploy-hpc-networking`). Leave Resource Manager **working directory** empty. If the zip URL 404s, run GitHub Action **Package ORM zip — HPC networking** once on your default branch.
+
+schemaVersion: 1.1.0
+version: "20190304"
+locale: "en"
+
+variableGroups:
+  - title: "Target"
+    variables:
+      - compartment_ocid
+
+  - title: "Network layout and CIDRs"
+    variables:
+      - name_prefix
+      - vcn_cidr_block
+      - private_subnet_layout
+
+  - title: "Custom display names (optional)"
+    variables:
+      - vcn_display_name
+      - public_subnet_display_name
+      - private_subnet_1_display_name
+      - private_subnet_2_display_name
+
+  - title: "Security (optional)"
+    variables:
+      - private_subnet_ssh_sources_extras
+
+outputs:
+  deployment_network_summary:
+    title: "Deployment CIDR + OCID summary"
+    visible: true
+  network_cidrs_map:
+    title: "CIDR map (structured)"
+    visible: true
+  vcn_id:
+    title: "VCN OCID"
+    visible: true
+  vcn_cidr:
+    title: "VCN CIDR"
+    visible: true
+  public_subnet_ocid:
+    title: "Public subnet OCID"
+    visible: true
+  public_subnet_cidr:
+    title: "Public subnet CIDR"
+    visible: true
+  private_subnet_ocids:
+    title: "Private subnet OCIDs"
+    visible: true
+  private_subnet_cidrs:
+    title: "Private subnet CIDRs"
+    visible: true
+  public_route_table_ocid:
+    title: "Public route table OCID"
+    visible: true
+  private_route_table_ocid:
+    title: "Private (NAT) route table OCID"
+    visible: true
+
+variables:
+  tenancy_ocid:
+    type: string
+    title: "Tenancy OCID"
+    description: "Pre-filled from your session in Resource Manager."
+    required: true
+    visible: false
+
+  region:
+    type: oci:identity:region:name
+    title: "Region"
+    description: "Pre-filled from your session in Resource Manager."
+    required: true
+    visible: false
+
+  compartment_ocid:
+    type: oci:identity:compartment:id
+    title: "Compartment"
+    description: "Where the VCN is created."
+    required: true
+    dependsOn:
+      compartmentId: ${tenancy_ocid}
+
+  name_prefix:
+    type: string
+    title: "Name prefix"
+    description: "Used for default display names unless overrides below are set."
+    default: "hpc-net"
+    required: false
+
+  vcn_cidr_block:
+    type: string
+    title: "VCN CIDR"
+    description: "Example 10.0.0.0/16 → public 10.0.1.0/24, private(s) 10.0.2.0/24 and optionally 10.0.3.0/24."
+    default: "10.0.0.0/16"
+    required: true
+
+  private_subnet_layout:
+    type: enum
+    title: "Private subnet layout"
+    description: "Default matches rdma-platform: distinct subnets for management vs RDMA/HPC traffic."
+    enum:
+      - "Consolidate management and RDMA into one private subnet"
+      - "Separate private subnets for management and RDMA"
+    default: "Separate private subnets for management and RDMA"
+    required: true
+
+  vcn_display_name:
+    type: string
+    title: "VCN display name (optional)"
+    description: "Leave empty for \"<prefix>-vcn\"."
+    default: ""
+    required: false
+
+  public_subnet_display_name:
+    type: string
+    title: "Public subnet display name (optional)"
+    default: ""
+    required: false
+
+  private_subnet_1_display_name:
+    type: string
+    title: "First private subnet display name (optional)"
+    description: "Consolidated layout: the only private subnet. Separate layout: typically management."
+    default: ""
+    required: false
+
+  private_subnet_2_display_name:
+    type: string
+    title: "Second private subnet display name (optional)"
+    description: "Only when layout is **Separate private subnets for management and RDMA** (RDMA/HPC subnet)."
+    default: ""
+    required: false
+    visible:
+      eq:
+        - private_subnet_layout
+        - "Separate private subnets for management and RDMA"
+
+  private_subnet_ssh_sources_extras:
+    type: string
+    title: "Extra SSH source CIDRs (private subnets)"
+    description: "Comma-separated CIDRs allowed to TCP/22 private subnets in addition to the VCN CIDR."
+    default: ""
+    required: false

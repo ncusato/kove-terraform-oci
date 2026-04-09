@@ -1,6 +1,6 @@
 # Kove Infra Build on OCI
 
-> **Updated STIG-hardened stacks** (Terraform roots under [`stig-hardened-builds/`](stig-hardened-builds/README.md)): **[RDMA platform](stig-hardened-builds/rdma-platform/README.md)** — bastion, management VM, and **BM.Optimized3** compute cluster; **[OKE cluster](stig-hardened-builds/oke-cluster/README.md)** — Kubernetes with worker shapes aligned to that RDMA stack’s Flex VMs. Each README includes **Deploy to Oracle Cloud** (full repo `master.zip` + working directory). This **root** module below is the original head + BM HPC layout.
+> **Updated STIG-hardened stacks** (Terraform roots under [`stig-hardened-builds/`](stig-hardened-builds/README.md)): **[RDMA platform](stig-hardened-builds/rdma-platform/README.md)** — bastion, management VM, and **BM.Optimized3** compute cluster; **[OKE cluster](stig-hardened-builds/oke-cluster/README.md)** — Kubernetes with worker shapes aligned to that RDMA stack’s Flex VMs. Each of those stacks (plus **[HPC networking](hpc-networking/README.md)** at the repo root) has its **own** **Deploy to Oracle Cloud** button pointing at a **standalone zip** from GitHub Releases (see [`.github/workflows/`](.github/workflows/)). This **root** module below is the original head + BM HPC layout.
 
 [![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/tags/Kove-Infra-OCI.zip)
 
@@ -19,12 +19,17 @@ This is a **RHEL** deployment on OCI bare metal with **RDMA authentication** for
 - [Reference](#reference)
 - [FAQ](FAQ.md)
 - [STIG-hardened builds (extra Terraform stacks)](#stig-hardened-builds-extra-terraform-stacks)
+- [HPC networking (VCN only)](#hpc-networking-vcn-only)
 
 Sections use **`<details>`** blocks and are **collapsed by default** on GitHub; click a summary row to expand. Links above scroll to the right place—you may still need to open the block to read it.
 
 ## STIG-hardened builds (extra Terraform stacks)
 
 Outside this root module, **`stig-hardened-builds/`** contains additional Terraform roots: **`rdma-platform/`** (bastion, management VM, BM.Optimized3 plane) and **`oke-cluster/`** (OKE + worker pool). See [`stig-hardened-builds/README.md`](stig-hardened-builds/README.md).
+
+### HPC networking (VCN only)
+
+At the repo root, **[`hpc-networking/`](hpc-networking/README.md)** is a separate Terraform stack (not under `stig-hardened-builds/`) that creates only **VCN, gateways, route tables, security lists, and subnets** — public plus **one or two** private subnets with the same **/24 indexing** as `rdma-platform`. Use it when you want **Resource Manager** job outputs that call out **CIDRs** explicitly (`deployment_network_summary`, `network_cidrs_map`). The **Deploy to Oracle Cloud** button there uses the **standalone** release zip (`deploy-hpc-networking`); leave the stack **working directory** empty.
 
 ---
 
