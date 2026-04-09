@@ -1,10 +1,12 @@
 title: "HPC networking (VCN + routing + subnets)"
-description: "Creates a VCN with a public subnet (Internet gateway) and one or two private subnets (NAT). Matches the stig-hardened-builds/rdma-platform CIDR pattern when you choose separate management and RDMA subnets."
+description: "Creates a VCN with public + private subnets, route tables, and security lists aligned with oracle-quickstart/oci-hpc (NAT + service gateway on private routes, DHCP VcnLocalPlusInternet, public SL with ssh_ingress_cidr)."
 informationalText: |
+  **Routing (oracle-quickstart/oci-hpc style):** Public subnet → **Internet gateway**. Private subnets → **NAT gateway** for `0.0.0.0/0` and **service gateway** for the **Oracle Services Network** (Object Storage and other OCI services without hairpinning through the NAT).
+
   **CIDR plan (default VCN 10.0.0.0/16):**
   - **Public** subnet: third octet **1** → 10.0.1.0/24 (route to Internet gateway).
-  - **Private (first)**: third octet **2** → 10.0.2.0/24 (NAT egress).
-  - **Private (second)** — only if you pick **Separate private subnets for management and RDMA**: third octet **3** → 10.0.3.0/24 (NAT egress).
+  - **Private (first)**: third octet **2** → 10.0.2.0/24 (NAT + OSN routes).
+  - **Private (second)** — only if you pick **Separate private subnets for management and RDMA**: third octet **3** → 10.0.3.0/24.
 
   If you pick **Consolidate management and RDMA into one private subnet**, only the public subnet and **one** private /24 (10.0.2.0/24) are created.
 
@@ -36,6 +38,8 @@ variableGroups:
 
   - title: "Security (optional)"
     variables:
+      - ssh_ingress_cidr
+      - public_ingress_hpc_ui_ports
       - private_subnet_ssh_sources_extras
 
 outputs:
@@ -147,6 +151,20 @@ variables:
       eq:
         - private_subnet_layout
         - "Separate private subnets for management and RDMA"
+
+  ssh_ingress_cidr:
+    type: string
+    title: "SSH / UI ingress CIDR (public subnet)"
+    description: "CIDR for TCP 22 and (if enabled) 3000/5000 on the public subnet — same idea as oci-hpc `ssh_cidr`. Tighten from 0.0.0.0/0 for production."
+    default: "0.0.0.0/0"
+    required: false
+
+  public_ingress_hpc_ui_ports:
+    type: boolean
+    title: "Allow HPC UI ports on public subnet"
+    description: "If true, TCP 3000 and 5000 from SSH ingress CIDR (Slurm/Grafana-style rules in oci-hpc public security list)."
+    default: true
+    required: false
 
   private_subnet_ssh_sources_extras:
     type: string

@@ -78,6 +78,21 @@ variable "private_subnet_ssh_sources_extras" {
   default     = ""
 }
 
+# ---------------------------------------------------------------------------
+# Security / routing aligned with oracle-quickstart/oci-hpc network.tf
+# ---------------------------------------------------------------------------
+variable "ssh_ingress_cidr" {
+  type        = string
+  description = "CIDR allowed to reach TCP 22 (and optional 3000/5000) on the **public** subnet — same role as `ssh_cidr` in oci-hpc. Use 0.0.0.0/0 only if you accept SSH from anywhere."
+  default     = "0.0.0.0/0"
+}
+
+variable "public_ingress_hpc_ui_ports" {
+  type        = bool
+  description = "If true, allow TCP 3000 and 5000 from `ssh_ingress_cidr` on the public subnet (Slurm/Grafana-style ingress in oci-hpc `public-security-list`)."
+  default     = true
+}
+
 variable "tags" {
   type        = map(string)
   description = "Freeform tags applied to created resources."

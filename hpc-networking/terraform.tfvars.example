@@ -17,6 +17,8 @@ private_subnet_layout = "Separate private subnets for management and RDMA"
 # private_subnet_2_display_name = ""
 
 # private_subnet_ssh_sources_extras = "203.0.113.0/24"
+# ssh_ingress_cidr = "203.0.113.0/24"  # tighten public SSH/UI like oci-hpc ssh_cidr
+# public_ingress_hpc_ui_ports = false # set false to drop TCP 3000/5000 on public
 
 tags = {
   project = "hpc-networking"

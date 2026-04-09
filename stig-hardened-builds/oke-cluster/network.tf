@@ -24,6 +24,36 @@ resource "oci_core_nat_gateway" "oke" {
   freeform_tags  = local.common_tags
 }
 
+resource "oci_core_service_gateway" "oke" {
+  count          = var.use_existing_vcn ? 0 : 1
+  compartment_id = var.compartment_ocid
+  display_name   = "${var.name_prefix}-service-gw"
+  vcn_id         = oci_core_virtual_network.oke[0].id
+  freeform_tags  = local.common_tags
+
+  services {
+    service_id = local.oracle_services_network.id
+  }
+}
+
+resource "oci_core_dhcp_options" "oke" {
+  count          = var.use_existing_vcn ? 0 : 1
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_virtual_network.oke[0].id
+  display_name   = "${var.name_prefix}-dhcp"
+  freeform_tags  = local.common_tags
+
+  options {
+    type        = "DomainNameServer"
+    server_type = "VcnLocalPlusInternet"
+  }
+
+  options {
+    type                = "SearchDomain"
+    search_domain_names = [local.dhcp_search_domain]
+  }
+}
+
 resource "oci_core_route_table" "public" {
   count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
@@ -49,6 +79,12 @@ resource "oci_core_route_table" "private" {
     destination       = "0.0.0.0/0"
     destination_type  = "CIDR_BLOCK"
     network_entity_id = oci_core_nat_gateway.oke[0].id
+  }
+
+  route_rules {
+    destination       = local.oracle_services_network.cidr_block
+    destination_type  = "SERVICE_CIDR_BLOCK"
+    network_entity_id = oci_core_service_gateway.oke[0].id
   }
 }
 
@@ -135,7 +171,7 @@ resource "oci_core_security_list" "workers" {
 
   ingress_security_rules {
     protocol = "6"
-    source   = "0.0.0.0/0"
+    source   = var.worker_ssh_ingress_cidr
     tcp_options {
       min = 22
       max = 22
@@ -160,6 +196,7 @@ resource "oci_core_subnet" "api" {
   dns_label                  = "k8sapi"
   route_table_id             = local.public_route_table_id
   security_list_ids          = [oci_core_security_list.api.id]
+  dhcp_options_id            = length(oci_core_dhcp_options.oke) > 0 ? oci_core_dhcp_options.oke[0].id : null
   prohibit_public_ip_on_vnic = false
   freeform_tags              = local.common_tags
 }
@@ -172,6 +209,7 @@ resource "oci_core_subnet" "lb" {
   dns_label                  = "svclb"
   route_table_id             = local.public_route_table_id
   security_list_ids          = [oci_core_security_list.lb.id]
+  dhcp_options_id            = length(oci_core_dhcp_options.oke) > 0 ? oci_core_dhcp_options.oke[0].id : null
   prohibit_public_ip_on_vnic = false
   freeform_tags              = local.common_tags
 }
@@ -184,6 +222,7 @@ resource "oci_core_subnet" "workers" {
   dns_label                  = "k8swrkr"
   route_table_id             = local.private_route_table_id
   security_list_ids          = [oci_core_security_list.workers.id]
+  dhcp_options_id            = length(oci_core_dhcp_options.oke) > 0 ? oci_core_dhcp_options.oke[0].id : null
   prohibit_public_ip_on_vnic = true
   freeform_tags              = local.common_tags
 }

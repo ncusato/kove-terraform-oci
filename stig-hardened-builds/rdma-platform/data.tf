@@ -2,6 +2,15 @@ data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
 }
 
+# Oracle Services Network for service gateway route on private subnets (oracle-quickstart/oci-hpc).
+data "oci_core_services" "oracle_services_network" {
+  filter {
+    name   = "name"
+    values = ["All .* Services In Oracle Services Network"]
+    regex  = true
+  }
+}
+
 data "oci_core_vcns" "existing_vcns" {
   compartment_id = var.compartment_ocid
 }

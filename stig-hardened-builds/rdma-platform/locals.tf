@@ -9,6 +9,9 @@ locals {
   dns_safe_prefix    = substr(replace(replace(lower(trimspace(var.name_prefix)), "-", ""), "_", ""), 0, 12)
   vcn_dns_label      = length(local.dns_safe_prefix) > 0 ? local.dns_safe_prefix : "rdmaplatform"
 
+  oracle_services_network = data.oci_core_services.oracle_services_network.services[0]
+  dhcp_search_domain      = format("%s.oraclevcn.com", local.vcn_dns_label)
+
   vcn_name             = "${var.name_prefix}-vcn"
   igw_name             = "${var.name_prefix}-igw"
   nat_name             = "${var.name_prefix}-nat"

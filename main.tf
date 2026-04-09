@@ -73,7 +73,17 @@ data "oci_core_images" "ol8_head" {
   sort_order               = "DESC"
 }
 
+data "oci_core_services" "oracle_services_network" {
+  filter {
+    name   = "name"
+    values = ["All .* Services In Oracle Services Network"]
+    regex  = true
+  }
+}
+
 locals {
+  oracle_services_network = data.oci_core_services.oracle_services_network.services[0]
+
   # Extra CIDRs that may SSH to BM private IPs (bastion outside VCN, peering, etc.)
   private_subnet_ssh_extra_cidrs = compact([for s in split(",", var.private_subnet_ssh_sources_extras) : trimspace(s) if trimspace(s) != ""])
   public_subnet_cidr             = cidrsubnet(var.vcn_cidr_block, 8, 1)
@@ -93,6 +103,12 @@ EOT
 
   custom_name_prefix_effective = trimspace(var.custom_name_prefix) != "" ? trimspace(var.custom_name_prefix) : trimspace(var.cluster_display_name_prefix)
   naming_prefix                = var.enable_custom_names ? local.custom_name_prefix_effective : "cluster"
+  vcn_dns_label_effective = substr(
+    length(trimspace(replace(replace(lower(local.naming_prefix), "-", ""), "_", ""))) > 0 ? replace(replace(lower(local.naming_prefix), "-", ""), "_", "") : "clustervcn",
+    0,
+    15
+  )
+  dhcp_search_domain = format("%s.oraclevcn.com", local.vcn_dns_label_effective)
   # Keep static defaults unless explicitly toggled on.
   vcn_name            = var.enable_custom_names ? "${local.naming_prefix}-vcn" : "cluster-vcn"
   igw_name            = var.enable_custom_names ? "${local.naming_prefix}-igw" : "cluster-igw"
@@ -118,12 +134,7 @@ resource "oci_core_virtual_network" "this" {
   cidr_block     = var.vcn_cidr_block
   compartment_id = var.compartment_ocid
   display_name   = local.vcn_name
-  # OCI VCN dns_label: alphanumeric, max 15 chars (sanitize prefix; avoid regex* functions for older TF quirks).
-  dns_label = substr(
-    length(trimspace(replace(replace(lower(local.naming_prefix), "-", ""), "_", ""))) > 0 ? replace(replace(lower(local.naming_prefix), "-", ""), "_", "") : "clustervcn",
-    0,
-    15
-  )
+  dns_label      = local.vcn_dns_label_effective
 }
 
 resource "oci_core_internet_gateway" "this" {
@@ -139,6 +150,34 @@ resource "oci_core_nat_gateway" "this" {
   compartment_id = var.compartment_ocid
   display_name   = local.nat_name
   vcn_id         = oci_core_virtual_network.this[0].id
+}
+
+resource "oci_core_service_gateway" "this" {
+  count          = var.use_existing_vcn ? 0 : 1
+  compartment_id = var.compartment_ocid
+  display_name   = "${local.naming_prefix}-service-gw"
+  vcn_id         = oci_core_virtual_network.this[0].id
+
+  services {
+    service_id = local.oracle_services_network.id
+  }
+}
+
+resource "oci_core_dhcp_options" "this" {
+  count          = var.use_existing_vcn ? 0 : 1
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_virtual_network.this[0].id
+  display_name   = "${local.naming_prefix}-dhcp"
+
+  options {
+    type        = "DomainNameServer"
+    server_type = "VcnLocalPlusInternet"
+  }
+
+  options {
+    type                = "SearchDomain"
+    search_domain_names = [local.dhcp_search_domain]
+  }
 }
 
 resource "oci_core_route_table" "public" {
@@ -165,6 +204,12 @@ resource "oci_core_route_table" "private" {
     destination_type  = "CIDR_BLOCK"
     network_entity_id = oci_core_nat_gateway.this[0].id
   }
+
+  route_rules {
+    destination       = local.oracle_services_network.cidr_block
+    destination_type  = "SERVICE_CIDR_BLOCK"
+    network_entity_id = oci_core_service_gateway.this[0].id
+  }
 }
 
 # Public subnet SL — aligned with oracle-quickstart/oci-hpc public-security-list: intra-VCN + SSH from Internet + ICMP.
@@ -186,11 +231,23 @@ resource "oci_core_security_list" "public" {
 
   ingress_security_rules {
     protocol = "6" # TCP
-    source   = "0.0.0.0/0"
+    source   = var.ssh_ingress_cidr
 
     tcp_options {
       min = 22
       max = 22
+    }
+  }
+
+  dynamic "ingress_security_rules" {
+    for_each = var.public_ingress_hpc_ui_ports ? [3000, 5000] : []
+    content {
+      protocol = "6"
+      source   = var.ssh_ingress_cidr
+      tcp_options {
+        min = ingress_security_rules.value
+        max = ingress_security_rules.value
+      }
     }
   }
 
@@ -210,16 +267,6 @@ resource "oci_core_security_list" "public" {
 
     icmp_options {
       type = 3
-    }
-  }
-
-  ingress_security_rules {
-    protocol = "1"
-    source   = "0.0.0.0/0"
-
-    icmp_options {
-      type = 8
-      code = 0
     }
   }
 }
@@ -283,6 +330,7 @@ resource "oci_core_subnet" "public" {
   cidr_block                 = local.public_subnet_cidr
   route_table_id             = oci_core_route_table.public[0].id
   security_list_ids          = [oci_core_security_list.public[0].id]
+  dhcp_options_id            = oci_core_dhcp_options.this[0].id
   prohibit_public_ip_on_vnic = false
   dns_label                  = "publicsub"
 }
@@ -296,6 +344,7 @@ resource "oci_core_subnet" "private" {
   cidr_block                 = local.private_subnet_cidr
   route_table_id             = oci_core_route_table.private[0].id
   security_list_ids          = [oci_core_security_list.private[0].id]
+  dhcp_options_id            = oci_core_dhcp_options.this[0].id
   prohibit_public_ip_on_vnic = true
   dns_label                  = "privatesub"
 }

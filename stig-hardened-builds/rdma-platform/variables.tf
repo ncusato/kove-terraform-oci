@@ -78,6 +78,18 @@ variable "private_subnet_ssh_sources_extras" {
   default     = ""
 }
 
+variable "ssh_ingress_cidr" {
+  type        = string
+  description = "CIDR for TCP 22 (and optional 3000/5000) on the **public** subnet when Terraform creates the VCN — same role as oci-hpc `ssh_cidr`."
+  default     = "0.0.0.0/0"
+}
+
+variable "public_ingress_hpc_ui_ports" {
+  type        = bool
+  description = "When creating the VCN: allow TCP 3000 and 5000 from ssh_ingress_cidr on the public subnet (oci-hpc public security list)."
+  default     = true
+}
+
 # ---------------------------------------------------------------------------
 # Optional bastion (public subnet)
 # ---------------------------------------------------------------------------

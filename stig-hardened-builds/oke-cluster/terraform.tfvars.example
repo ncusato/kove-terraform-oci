@@ -25,5 +25,8 @@ name_prefix = "kove-oke"
 # Optional: custom worker image (otherwise first OKE node image from data source)
 # worker_image_id = "ocid1.image.oc1.iad.aaaa..."
 
+# When Terraform creates the VCN: worker subnet SSH source (oci-hpc-style tighten)
+# worker_ssh_ingress_cidr = "10.0.0.0/16"
+
 # Private API endpoint only (no public IP on control plane)
 # public_control_plane_endpoint = false

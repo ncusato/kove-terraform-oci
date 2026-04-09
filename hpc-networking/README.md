@@ -4,7 +4,7 @@
 
 **Resource Manager:** the button uses a **standalone zip** (only this stack), published by GitHub Actions ([`package-orm-hpc-networking.yml`](../.github/workflows/package-orm-hpc-networking.yml)). Leave **working directory** **empty** (Terraform files are at the archive root). If the link 404s, run that workflow once on **`main`**/**`master`** (or push a change under `hpc-networking/`). Forks: replace `ncusato/kove-terraform-oci` in the URL with your repo.
 
-Terraform root that only creates **VCN networking**: Internet gateway + NAT gateway, public and private **route tables**, **security lists**, and subnets.
+Terraform root that only creates **VCN networking** in line with **[oracle-quickstart/oci-hpc](https://github.com/oracle-quickstart/oci-hpc)** `network.tf` patterns: **Internet + NAT + service gateways**, **public** route table (default → IGW), **private** route table (default → NAT, Oracle Services Network → service gateway), **custom DHCP** (`VcnLocalPlusInternet` + `*.oraclevcn.com` search domain), and **security lists** (public: VCN + `ssh_ingress_cidr` for 22 and optional 3000/5000; private: VCN-wide + oci-hpc-style ICMP, plus optional extra SSH CIDRs).
 
 - **Consolidate management and RDMA into one private subnet:** public + **one** private `/24` (NAT for `0.0.0.0/0`).
 - **Separate private subnets for management and RDMA** (default): public + **two** private `/24`s — same **CIDR indexing** as `stig-hardened-builds/rdma-platform` (indices **1** = public, **2** = first private, **3** = second private inside a `/16` VCN). Resource Manager exposes this as a **dropdown**.

@@ -48,6 +48,21 @@ output "nat_gateway_ocid" {
   value       = oci_core_nat_gateway.this.id
 }
 
+output "service_gateway_ocid" {
+  description = "Service gateway OCID (private subnets route Oracle Services Network here, oci-hpc pattern)."
+  value       = oci_core_service_gateway.this.id
+}
+
+output "dhcp_options_ocid" {
+  description = "Custom VCN DHCP options (VcnLocalPlusInternet + search domain, oci-hpc pattern)."
+  value       = oci_core_dhcp_options.this.id
+}
+
+output "oracle_services_network_cidr" {
+  description = "Oracle Services Network CIDR used in the private route table SERVICE_CIDR_BLOCK rule."
+  value       = local.oracle_services_network.cidr_block
+}
+
 # Resource Manager: single copy-friendly block listing names + CIDRs after apply.
 output "deployment_network_summary" {
   description = "Human-readable VCN and subnet layout for runbooks and ORM job output review."
@@ -67,7 +82,9 @@ output "deployment_network_summary" {
       CIDR: ${local.private_subnet_cidrs[i]}
       OCID: ${oci_core_subnet.private[i].id}
     %{endfor~}
-    Private route table (NAT): ${oci_core_route_table.private.id}
+    Private route table (NAT + Oracle Services via service gateway): ${oci_core_route_table.private.id}
+    Service gateway: ${oci_core_service_gateway.this.id}
+    DHCP options: ${oci_core_dhcp_options.this.id}
   EOT
 }
 

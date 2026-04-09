@@ -1,10 +1,15 @@
 locals {
   common_tags = var.tags
 
+  # Single OSN object from data source (matches oci-hpc network.tf private route table).
+  oracle_services_network = data.oci_core_services.oracle_services_network.services[0]
+
   private_ssh_extra_cidrs = compact([for s in split(",", var.private_subnet_ssh_sources_extras) : trimspace(s) if trimspace(s) != ""])
 
   dns_safe_prefix = substr(replace(replace(lower(trimspace(var.name_prefix)), "-", ""), "_", ""), 0, 12)
   vcn_dns_label   = length(local.dns_safe_prefix) > 0 ? local.dns_safe_prefix : "hpcnetwork"
+
+  dhcp_search_domain = format("%s.oraclevcn.com", local.vcn_dns_label)
 
   public_subnet_cidr  = cidrsubnet(var.vcn_cidr_block, 8, 1)
   private_subnet_cidr = cidrsubnet(var.vcn_cidr_block, 8, 2)

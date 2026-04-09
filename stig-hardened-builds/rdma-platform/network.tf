@@ -24,6 +24,36 @@ resource "oci_core_nat_gateway" "this" {
   freeform_tags  = local.common_tags
 }
 
+resource "oci_core_service_gateway" "this" {
+  count          = var.use_existing_vcn ? 0 : 1
+  compartment_id = var.compartment_ocid
+  display_name   = "${var.name_prefix}-service-gw"
+  vcn_id         = oci_core_virtual_network.this[0].id
+  freeform_tags  = local.common_tags
+
+  services {
+    service_id = local.oracle_services_network.id
+  }
+}
+
+resource "oci_core_dhcp_options" "this" {
+  count          = var.use_existing_vcn ? 0 : 1
+  compartment_id = var.compartment_ocid
+  vcn_id         = oci_core_virtual_network.this[0].id
+  display_name   = "${var.name_prefix}-dhcp"
+  freeform_tags  = local.common_tags
+
+  options {
+    type        = "DomainNameServer"
+    server_type = "VcnLocalPlusInternet"
+  }
+
+  options {
+    type                = "SearchDomain"
+    search_domain_names = [local.dhcp_search_domain]
+  }
+}
+
 resource "oci_core_route_table" "public" {
   count          = var.use_existing_vcn ? 0 : 1
   compartment_id = var.compartment_ocid
@@ -71,10 +101,22 @@ resource "oci_core_security_list" "public" {
 
   ingress_security_rules {
     protocol = "6"
-    source   = "0.0.0.0/0"
+    source   = var.ssh_ingress_cidr
     tcp_options {
       min = 22
       max = 22
+    }
+  }
+
+  dynamic "ingress_security_rules" {
+    for_each = var.public_ingress_hpc_ui_ports ? [3000, 5000] : []
+    content {
+      protocol = "6"
+      source   = var.ssh_ingress_cidr
+      tcp_options {
+        min = ingress_security_rules.value
+        max = ingress_security_rules.value
+      }
     }
   }
 
@@ -92,15 +134,6 @@ resource "oci_core_security_list" "public" {
     source   = var.vcn_cidr_block
     icmp_options {
       type = 3
-    }
-  }
-
-  ingress_security_rules {
-    protocol = "1"
-    source   = "0.0.0.0/0"
-    icmp_options {
-      type = 8
-      code = 0
     }
   }
 }
@@ -173,6 +206,7 @@ resource "oci_core_subnet" "management" {
   cidr_block                 = local.mgmt_subnet_cidr
   route_table_id             = oci_core_route_table.private[0].id
   security_list_ids          = [oci_core_security_list.private[0].id]
+  dhcp_options_id            = oci_core_dhcp_options.this[0].id
   prohibit_public_ip_on_vnic = true
   dns_label                  = "mgmt"
   freeform_tags              = local.common_tags
@@ -186,6 +220,7 @@ resource "oci_core_subnet" "rdma" {
   cidr_block                 = local.rdma_subnet_cidr
   route_table_id             = oci_core_route_table.private[0].id
   security_list_ids          = [oci_core_security_list.private[0].id]
+  dhcp_options_id            = oci_core_dhcp_options.this[0].id
   prohibit_public_ip_on_vnic = true
   dns_label                  = "rdma"
   freeform_tags              = local.common_tags

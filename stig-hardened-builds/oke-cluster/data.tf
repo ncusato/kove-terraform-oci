@@ -2,6 +2,14 @@ data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
 }
 
+data "oci_core_services" "oracle_services_network" {
+  filter {
+    name   = "name"
+    values = ["All .* Services In Oracle Services Network"]
+    regex  = true
+  }
+}
+
 data "oci_containerengine_cluster_option" "cluster" {
   cluster_option_id = "all"
 }

@@ -113,6 +113,12 @@ variable "worker_image_id" {
   default     = ""
 }
 
+variable "worker_ssh_ingress_cidr" {
+  type        = string
+  description = "When Terraform creates the VCN: CIDR allowed to SSH (TCP 22) to worker nodes on their subnet security list (tighten like oci-hpc `ssh_cidr`). Ignored for existing VCN (your SLs apply)."
+  default     = "0.0.0.0/0"
+}
+
 variable "tags" {
   type        = map(string)
   default     = {}

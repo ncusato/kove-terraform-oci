@@ -22,6 +22,9 @@ existing_private_subnet_id = "ocid1.subnet.oc1.phx.aaaaaaaa..."
 # vcn_cidr_block = "10.0.0.0/16"
 # Bastion/jump host OUTSIDE that VCN? Allow SSH to BM private IPs from those CIDRs (comma-separated):
 # private_subnet_ssh_sources_extras = "10.50.0.0/16"
+# When creating the VCN: public subnet SSH/UI CIDRs (oci-hpc ssh_cidr pattern):
+# ssh_ingress_cidr = "203.0.113.0/24"
+# public_ingress_hpc_ui_ports = false
 
 # Optional: one AD for entire cluster (e.g. "pILZ:PHX-AD-2"). Empty = derive from subnets.
 availability_domain = ""

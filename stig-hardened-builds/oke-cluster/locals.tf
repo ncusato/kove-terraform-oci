@@ -33,6 +33,14 @@ locals {
 
   common_tags = var.tags
 
+  oke_vcn_dns_label = substr(
+    length(replace(lower(var.name_prefix), "-", "")) > 0 ? replace(lower(var.name_prefix), "-", "") : "koveoke",
+    0,
+    15
+  )
+  oracle_services_network = data.oci_core_services.oracle_services_network.services[0]
+  dhcp_search_domain      = format("%s.oraclevcn.com", local.oke_vcn_dns_label)
+
   effective_vcn_id = var.use_existing_vcn ? var.existing_vcn_id : oci_core_virtual_network.oke[0].id
 
   effective_vcn_cidr = var.use_existing_vcn ? data.oci_core_vcn.existing[0].cidr_block : var.vcn_cidr_block
