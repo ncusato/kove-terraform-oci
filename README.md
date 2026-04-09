@@ -1,5 +1,7 @@
 # Kove Infra Build on OCI
 
+> **Updated STIG-hardened stacks** (Terraform roots under [`stig-hardened-builds/`](stig-hardened-builds/README.md)): **[RDMA platform](stig-hardened-builds/rdma-platform/README.md)** — bastion, management VM, and **BM.Optimized3** compute cluster; **[OKE cluster](stig-hardened-builds/oke-cluster/README.md)** — Kubernetes with worker shapes aligned to that RDMA stack’s Flex VMs. Each README includes **Deploy to Oracle Cloud** (full repo `master.zip` + working directory). This **root** module below is the original head + BM HPC layout.
+
 [![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/tags/Kove-Infra-OCI.zip)
 
 This is a **RHEL** deployment on OCI bare metal with **RDMA authentication** for **HPC**.
