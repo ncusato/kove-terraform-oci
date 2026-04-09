@@ -1,9 +1,8 @@
 # OKE cluster (starter stack)
 
-[![Deploy to Oracle Cloud (tag)](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/tags/Kove-Infra-OCI.zip)
-[![Deploy to Oracle Cloud (master)](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/heads/master.zip)
+[![Deploy to Oracle Cloud](https://oci-resourcemanager-plugin.plugins.oci.oraclecloud.com/latest/deploy-to-oracle-cloud.svg)](https://cloud.oracle.com/resourcemanager/stacks/create?zipUrl=https://github.com/ncusato/kove-terraform-oci/archive/refs/tags/Kove-Infra-OCI.zip)
 
-**Resource Manager:** use the **full repo** zip from the button, then set **Working directory** to `<zip-root>/stig-hardened-builds/oke-cluster` (e.g. `kove-terraform-oci-master/stig-hardened-builds/oke-cluster`).
+**Resource Manager:** use the **full repo** zip from the button, then set **Working directory** to `<zip-root>/stig-hardened-builds/oke-cluster` (for the tag zip, `<zip-root>` is usually `kove-terraform-oci-Kove-Infra-OCI`). For `master.zip`, use the same path under `kove-terraform-oci-master/…`.
 
 Terraform root that creates a **dedicated VCN** and an **Oracle Kubernetes Engine (OKE)** cluster with:
 
