@@ -26,8 +26,17 @@ locals {
     s if !can(regex("(?i)aarch64|arm64", coalesce(try(s.source_name, ""), "")))
   ]
 
+  # OCI OKE worker images usually include "-OKE-" in source_name; prefer those for VM.Standard.E6.Flex (avoids 400 shape/image mismatch).
+  node_image_sources_oke_x86 = [
+    for s in local.node_image_sources_x86 :
+    s if can(regex("(?i)-oke-", coalesce(try(s.source_name, ""), "")))
+  ]
+
+  # Do not fall back to an unfiltered image (could be AArch64 and fail on E6.Flex).
   worker_image_id_effective = trimspace(var.worker_image_id) != "" ? trimspace(var.worker_image_id) : try(
-    length(local.node_image_sources_x86) > 0 ? local.node_image_sources_x86[0].image_id : local.node_image_sources[0].image_id,
+    length(local.node_image_sources_oke_x86) > 0 ? local.node_image_sources_oke_x86[0].image_id : (
+      length(local.node_image_sources_x86) > 0 ? local.node_image_sources_x86[0].image_id : ""
+    ),
     ""
   )
 

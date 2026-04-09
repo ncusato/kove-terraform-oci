@@ -76,7 +76,7 @@ resource "oci_containerengine_node_pool" "workers" {
   lifecycle {
     precondition {
       condition     = local.worker_image_id_effective != ""
-      error_message = "No worker node image resolved: set worker_image_id or ensure node pool option sources include an IMAGE with image_id for this cluster/region."
+      error_message = "No worker node image resolved for this shape/region. Set worker_image_id to an OKE-compatible x86 image OCID (Console → Kubernetes → cluster → node pool creation lists images), or ensure node pool option sources include an IMAGE with source_name containing -OKE- and x86 (not AARCH64)."
     }
   }
 }

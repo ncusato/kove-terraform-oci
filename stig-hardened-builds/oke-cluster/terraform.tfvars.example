@@ -1,4 +1,8 @@
 # Copy to terraform.tfvars (gitignored at repo root) and edit.
+#
+# Shared RDMA VCN (recommended with rdma-platform): use_existing_vcn = true and paste VCN + route table
+# OCIDs from rdma outputs. You will see **6 subnets** in that VCN (3 RDMA + 3 OKE) — that is expected.
+# Dedicated OKE-only VCN: use_existing_vcn = false → **3 subnets** in a new VCN.
 
 tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 region           = "us-ashburn-1"
